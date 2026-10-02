@@ -327,12 +327,33 @@
 
     const rawApps = state.apps.filter(a => a.id !== "base");
     const filteredApps = rawApps.filter(a => {
-      const meta = APP_METAS[a.id] || { name: a.name, desc: a.description, category: "all" };
+      const meta = APP_METAS[a.id] || {
+        name: a.name,
+        desc: a.description,
+        category: a.category || "other",
+        favorite: false,
+      };
       const q = state.searchQuery.toLowerCase().trim();
-      const matchQuery = !q || meta.name.toLowerCase().includes(q) || meta.desc.toLowerCase().includes(q) || a.id.toLowerCase().includes(q);
-      const matchCat = state.selectedCategory === "all" ||
-        (state.selectedCategory === "favorites" && meta.favorite) ||
-        meta.category === state.selectedCategory;
+      const matchQuery = !q ||
+        (meta.name && meta.name.toLowerCase().includes(q)) ||
+        (meta.desc && meta.desc.toLowerCase().includes(q)) ||
+        (a.id && a.id.toLowerCase().includes(q)) ||
+        (a.name && a.name.toLowerCase().includes(q)) ||
+        (a.description && a.description.toLowerCase().includes(q));
+
+      let matchCat = true;
+      if (state.selectedCategory === "all") matchCat = true;
+      else if (state.selectedCategory === "official") matchCat = a.source === "official" || !a.source;
+      else if (state.selectedCategory === "orion") matchCat = a.source === "setuporion";
+      else if (state.selectedCategory === "favorites") matchCat = !!meta.favorite;
+      else if (state.selectedCategory === "ai") matchCat = meta.category === "ai" || a.category === "ia";
+      else if (state.selectedCategory === "automation") matchCat = a.category === "automacao" || meta.category === "automation";
+      else if (state.selectedCategory === "chat") matchCat = meta.category === "whatsapp" || a.category === "atendimento" || a.category === "comunicacao";
+      else if (state.selectedCategory === "crm") matchCat = a.category === "produtividade" || meta.category === "sales" || a.category === "marketing";
+      else if (state.selectedCategory === "db") matchCat = meta.category === "db" || a.category === "banco" || a.category === "infra";
+      else if (state.selectedCategory === "dev") matchCat = a.category === "desenvolvimento" || a.category === "utilitarios" || a.category === "seguranca";
+      else matchCat = (meta.category === state.selectedCategory || a.category === state.selectedCategory);
+
       return matchQuery && matchCat;
     });
 
@@ -387,6 +408,11 @@
                 <code>${escapeHtml(ip)}</code>
                 <span>📋</span>
               </div>
+            </div>
+
+            <div class="sidebar-orion-credit">
+              <span>Stack engine compatível com</span>
+              <strong>SetupOrion</strong>
             </div>
 
             <div class="user-row">
@@ -454,18 +480,21 @@
         <div class="search-input-box">
           <span class="search-icon">🔍</span>
           <input type="text" id="marketplace-search"
-                 placeholder="Buscar aplicativo: Ex: WhatsApp, banco de dados, IA..."
+                 placeholder="Buscar por nome ou tecnologia: N8N, Chatwoot, Typebot, Dify, MinIO, WhatsApp..."
                  value="${escapeHtml(state.searchQuery)}" />
         </div>
 
         <div class="category-select-box">
           <select id="marketplace-category">
-            <option value="all" ${state.selectedCategory === "all" ? "selected" : ""}>Todas as categorias</option>
-            <option value="favorites" ${state.selectedCategory === "favorites" ? "selected" : ""}>Favoritos ⭐</option>
-            <option value="whatsapp" ${state.selectedCategory === "whatsapp" ? "selected" : ""}>WhatsApp & Atendimento</option>
-            <option value="ai" ${state.selectedCategory === "ai" ? "selected" : ""}>Inteligência Artificial</option>
-            <option value="db" ${state.selectedCategory === "db" ? "selected" : ""}>Bancos de Dados</option>
-            <option value="sales" ${state.selectedCategory === "sales" ? "selected" : ""}>Checkout & Vendas</option>
+            <option value="all" ${state.selectedCategory === "all" ? "selected" : ""}>Todas as aplicações (${rawApps.length})</option>
+            <option value="official" ${state.selectedCategory === "official" ? "selected" : ""}>⭐ Oficiais SetupImpa</option>
+            <option value="orion" ${state.selectedCategory === "orion" ? "selected" : ""}>🚀 Catálogo SetupOrion</option>
+            <option value="ai" ${state.selectedCategory === "ai" ? "selected" : ""}>🤖 Inteligência Artificial & LLMs</option>
+            <option value="automation" ${state.selectedCategory === "automation" ? "selected" : ""}>⚡ Automação & Workflows</option>
+            <option value="chat" ${state.selectedCategory === "chat" ? "selected" : ""}>💬 Atendimento & WhatsApp</option>
+            <option value="crm" ${state.selectedCategory === "crm" ? "selected" : ""}>📊 CRM & Produtividade</option>
+            <option value="db" ${state.selectedCategory === "db" ? "selected" : ""}>🗄️ Bancos de Dados & Storage</option>
+            <option value="dev" ${state.selectedCategory === "dev" ? "selected" : ""}>🛠️ Infra & Ferramentas Dev</option>
           </select>
         </div>
       </div>
@@ -477,9 +506,14 @@
             <p>Nenhum aplicativo encontrado para a busca "${escapeHtml(state.searchQuery)}".</p>
           </div>
         ` : filteredApps.map(a => {
+          const isOrion = a.source === "setuporion";
           const meta = { ...(APP_METAS[a.id] || {
-            icon: "📦", name: a.name, tag: "App", ram: "1 GB RAM",
-            desc: a.description, includes: "Roteador Traefik e rede isolada",
+            icon: isOrion ? "🚀" : "📦",
+            name: a.name,
+            tag: isOrion ? "SetupOrion Stack" : "App",
+            ram: isOrion ? "1 GB RAM" : "1 GB RAM",
+            desc: a.description,
+            includes: isOrion ? "Stack Swarm oficial SetupOrion e Traefik SSL" : "Roteador Traefik e rede isolada",
           }) };
 
           // Personalização inteligente do texto "Instala junto"
@@ -496,6 +530,10 @@
             } else {
               meta.includes = "Cria banco PostgreSQL automático (se desejar), Redis dedicado e Traefik SSL";
             }
+          } else if (isOrion) {
+            if (a.pg_dbs && a.pg_dbs.length > 0) {
+              meta.includes = "Provisiona banco PostgreSQL automático, Traefik SSL e volume persistente";
+            }
           }
 
           const count = a.instance_count || 0;
@@ -507,7 +545,10 @@
                 <div class="app-avatar">${meta.icon}</div>
                 <div class="app-identity">
                   <h3>${escapeHtml(meta.name)}</h3>
-                  <span class="app-tag-pill">${escapeHtml(meta.tag)}</span>
+                  <div class="tags-row">
+                    <span class="app-tag-pill ${isOrion ? "orion-tag" : "official-tag"}">${escapeHtml(meta.tag)}</span>
+                    ${isOrion ? '<span class="orion-mini-badge" title="Template oficial SetupOrion">Orion</span>' : ''}
+                  </div>
                 </div>
                 <span class="ram-badge">${meta.ram}</span>
               </div>
@@ -772,6 +813,17 @@
           </div>
         </div>
       ` : ""}
+
+      <!-- Card de Compatibilidade & Créditos SetupOrion -->
+      <div class="orion-credits-card">
+        <div class="orion-credits-head">
+          <span class="orion-credits-icon">🚀</span>
+          <div>
+            <h4>Ecossistema & Créditos ao SetupOrion</h4>
+            <p>O SetupImpa integra e adapta nativamente os templates e stacks Swarm desenvolvidos pelo projeto <strong>SetupOrion</strong>. Mantemos total compatibilidade com a topologia de rede interna (<code>OrionNet</code>), o padrão de persistência de credenciais em <code>/root/dados_vps/</code> e coexistência pacífica com instâncias criadas anteriormente.</p>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -813,8 +865,9 @@
         const appId = btn.dataset.installApp;
         state.currentApp = state.apps.find(x => x.id === appId);
         state.appForm = {};
-        (state.currentApp.fields || []).forEach(f => {
-          state.appForm[f.key] = f.default || "";
+        (state.currentApp?.fields || []).forEach(f => {
+          const k = f.key || f.name;
+          state.appForm[k] = f.default || "";
         });
         state.activeModal = "app";
         render();
@@ -1120,19 +1173,24 @@
   function renderAppModal() {
     const a = state.currentApp;
     if (!a) return "";
-    const meta = APP_METAS[a.id] || { icon: "📦", name: a.name };
+    const isOrion = a.source === "setuporion";
+    const meta = APP_METAS[a.id] || { icon: isOrion ? "🚀" : "📦", name: a.name };
     const count = a.instance_count || 0;
     const ip = state.status?.public_ip || "74.1.21.235";
-    const needsPg = a.id === "evolution" || a.id === "getfy" || meta.requires_postgres;
+    const needsPg = a.id === "evolution" || a.id === "getfy" || meta.requires_postgres || (isOrion && Array.isArray(a.pg_dbs) && a.pg_dbs.length > 0);
 
     // Filtra campos internos de db para não poluir
-    const visibleFields = (a.fields || []).filter(f => !["db_instance", "db_host", "db_name", "db_user", "db_pass"].includes(f.key));
+    const visibleFields = (a.fields || []).filter(f => !["db_instance", "db_host", "db_name", "db_user", "db_pass"].includes(f.key || f.name));
 
     return `
       <div class="modal-backdrop">
         <div class="modal-box">
           <div class="modal-head">
-            <h3>${meta.icon} <span>Quero Instalar: ${escapeHtml(meta.name)}</span></h3>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="app-avatar-mini">${meta.icon}</span>
+              <h3>Quero Instalar: ${escapeHtml(meta.name)}</h3>
+              ${isOrion ? '<span class="modal-orion-badge">Stack SetupOrion</span>' : ''}
+            </div>
             <button class="modal-close" onclick="window.__closeModal()">×</button>
           </div>
           <div class="modal-body">
@@ -1145,31 +1203,34 @@
             ${needsPg ? renderDatabaseSection(a) : ""}
 
             <p class="modal-intro">
-              Informe o endereço (subdomínio) que você deseja usar para acessar esta ferramenta:
+              Informe as configurações para inicializar sua stack com segurança:
             </p>
 
-            ${visibleFields.map(f => `
+            ${visibleFields.map(f => {
+              const k = f.key || f.name;
+              return `
               <div class="form-group">
-                <label>${escapeHtml(f.label)}</label>
+                <label>${escapeHtml(f.label || k)}</label>
                 ${(f.type === 'select' || Array.isArray(f.options)) ? `
-                  <select data-field-key="${f.key}">
+                  <select data-field-key="${k}">
                     ${(f.options || []).map(opt => {
                       const val = typeof opt === 'object' ? opt.value : opt;
                       const lbl = typeof opt === 'object' ? opt.label : opt;
-                      const sel = (state.appForm[f.key] || f.default) === val ? 'selected' : '';
+                      const sel = (state.appForm[k] || f.default) === val ? 'selected' : '';
                       return `<option value="${escapeHtml(val)}" ${sel}>${escapeHtml(lbl)}</option>`;
                     }).join("")}
                   </select>
                 ` : `
-                  <input data-field-key="${f.key}" type="text"
-                         placeholder="${f.key === 'domain' ? 'Ex: zap.meusite.com' : ''}"
-                         value="${escapeHtml(state.appForm[f.key] || '')}" />
+                  <input data-field-key="${k}" type="${f.type === 'password' ? 'password' : 'text'}"
+                         placeholder="${escapeHtml(f.placeholder || (k === 'domain' ? 'Ex: app.meusite.com' : ''))}"
+                         value="${escapeHtml(state.appForm[k] || '')}" />
                 `}
-                ${f.key === 'domain' ? `<span class="field-hint">Aponte o Registro A no seu provedor para o IP <strong>${escapeHtml(ip)}</strong>.</span>` : ''}
+                ${f.help ? `<span class="field-hint">${escapeHtml(f.help)}</span>` : (k === 'domain' ? `<span class="field-hint">Aponte o Registro A no seu provedor para o IP <strong>${escapeHtml(ip)}</strong>.</span>` : '')}
               </div>
-            `).join("")}
+            `;
+            }).join("")}
 
-            ${state.cfConfigured && a.fields?.some(f => f.key === 'domain') ? `
+            ${state.cfConfigured && (a.fields?.some(f => (f.key || f.name) === 'domain') || !a.fields?.length) ? `
               <div class="cf-auto-box">
                 <label>
                   <input type="checkbox" id="cf-auto-create" checked />

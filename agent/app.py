@@ -13,10 +13,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from installer import auth, base, checks, cloudflare, portainer_client, registry, validate
+from installer import auth, base, checks, cloudflare, orion_engine, portainer_client, registry, validate
 from installer.apps import evolution, getfy, hermes, ninerouter, omniroute, postgres
 
-VERSION = os.environ.get("SETUPIMPA_VERSION", "0.2.0")
+VERSION = os.environ.get("SETUPIMPA_VERSION", "0.3.0")
 STATIC = Path(__file__).resolve().parent / "static"
 DADOS = Path("/root/dados_vps")
 LOG_FILE = Path("/var/log/setupimpa.log")
@@ -295,6 +295,8 @@ def list_apps(_: dict = Depends(require_auth)):
     pg_instances = postgres.get_available_instances()
     items = []
     known_ids = set()
+
+    # 1. Apps Oficiais SetupImpa
     for app_id, mod in APPS.items():
         m = mod.meta()
         aid = m["id"]
@@ -302,12 +304,37 @@ def list_apps(_: dict = Depends(require_auth)):
         instances = registry.list_by_app(aid)
         items.append({
             **m,
+            "source": "official",
             "instance_count": len(instances),
             "instances": instances,
             "blocked": m.get("requires_base") and not base_ok,
         })
 
-    # Detecta e agrega instâncias importadas do SetupOrion (ex: chatwoot, typebot, redis, n8n)
+    # 2. Catálogo Completo SetupOrion (100+ Stacks Swarm adaptadas)
+    for o_app in orion_engine.list_apps():
+        o_id = o_app["id"]
+        if o_id in known_ids or o_id == "base":
+            continue
+        known_ids.add(o_id)
+        instances = registry.list_by_app(o_id)
+        fields = orion_engine.get_ui_fields(o_id)
+        items.append({
+            "id": o_id,
+            "name": o_app["name"],
+            "description": o_app["description"],
+            "category": o_app.get("category", "outros"),
+            "source": "setuporion",
+            "requires_base": True,
+            "requires_domain": True,
+            "multi_instance": True,
+            "instance_count": len(instances),
+            "instances": instances,
+            "blocked": not base_ok,
+            "fields": fields,
+            "pg_dbs": o_app.get("pg_dbs", []),
+        })
+
+    # 3. Detecta e agrega instâncias importadas do SetupOrion (ex: dados_*)
     for inst in registry.list_all():
         aid = inst.get("app", "")
         if aid and aid not in known_ids and aid != "base":
@@ -316,6 +343,8 @@ def list_apps(_: dict = Depends(require_auth)):
                 "id": aid,
                 "name": inst.get("app", aid).title(),
                 "description": f"Instância gerenciada/importada do SetupOrion ({inst.get('instance_id')})",
+                "category": "outros",
+                "source": "setuporion",
                 "instance_count": len(inst_list),
                 "instances": inst_list,
                 "multi_instance": True,
@@ -323,10 +352,14 @@ def list_apps(_: dict = Depends(require_auth)):
                 "fields": [],
             })
             known_ids.add(aid)
+
+    # 4. Item de Infraestrutura Base
     items.insert(0, {
         "id": "base",
         "name": "Traefik + Portainer",
         "description": "Infra base IMPA-hardened (obrigatorio)",
+        "source": "official",
+        "category": "infra",
         "requires_base": False,
         "requires_domain": True,
         "multi_instance": False,
@@ -370,7 +403,9 @@ def domain_already_used(domain: str) -> str | None:
 
 @app.post("/api/install/{app_id}")
 def install_app(app_id: str, body: InstallAppBody, _: dict = Depends(require_auth)):
-    if app_id not in APPS:
+    is_official = app_id in APPS
+    is_orion = bool(orion_engine.get_app(app_id))
+    if not is_official and not is_orion:
         raise HTTPException(404, detail="app_desconhecido")
     if not (checks.stack_exists("traefik") and checks.stack_exists("portainer")):
         raise HTTPException(400, detail="base_obrigatoria")
@@ -407,7 +442,13 @@ def install_app(app_id: str, body: InstallAppBody, _: dict = Depends(require_aut
 
     job_id = str(uuid.uuid4())
     JOBS[job_id] = {"id": job_id, "app": app_id, "instance_id": instance_id, "status": "queued", "result": None}
-    t = threading.Thread(target=_run_job, args=(job_id, APPS[app_id].install, params), daemon=True)
+
+    if is_official:
+        install_fn = APPS[app_id].install
+    else:
+        install_fn = lambda **kw: orion_engine.install(app_id=app_id, **kw)
+
+    t = threading.Thread(target=_run_job, args=(job_id, install_fn, params), daemon=True)
     t.start()
     return {"ok": True, "job_id": job_id, "instance_id": instance_id, "instance_num": instance_num}
 
