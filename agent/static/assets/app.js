@@ -277,12 +277,12 @@
     },
     postgres: {
       icon: '<img src="/assets/postgres.svg" class="app-icon-img" alt="PostgreSQL" />',
-      name: "PostgreSQL 16",
-      tag: "Banco de Dados",
-      ram: "512 MB RAM",
+      name: "PostgreSQL",
+      tag: "Padrão Orion",
+      ram: "1 GB RAM",
       category: "db",
-      desc: "Banco de dados relacional de alta performance e ultraveloz isolado na rede interna overlay.",
-      includes: "Volume persistente em /root/dados_vps e rede segura",
+      desc: "Banco de dados relacional oficial padrão SetupOrion (v14 com tuning de 500 conexões e timezone SP).",
+      includes: "Volume persistente em /root/dados_vps, 500 conexões e rede segura",
       favorite: true,
     },
     getfy: {

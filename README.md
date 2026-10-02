@@ -40,10 +40,11 @@ Sessoes em `/root/dados_vps/setupimpa_sessions.json`.
 | App | Stack | Dominio | Multi-instância |
 |---|---|---|---|
 | Traefik + Portainer | `traefik`, `portainer` | sim (Portainer) | não |
-| PostgreSQL 16 | `postgres`, `postgres_2`, ... | não (rede interna) | ✅ |
+| PostgreSQL (Padrão Orion) | `postgres`, `postgres_2`, ... | não (rede interna) | ✅ |
 | Evolution API v2 | `evolution`, `evolution_2`, ... | sim | ✅ |
 | Hermes Agent | `hermes`, `hermes_2`, ... | sim | ✅ |
 | Getfy (checkout) | `getfy`, `getfy_2`, ... | sim | ✅ |
+| OmniRoute Gateway AI | `omniroute`, `omniroute_2`, ... | sim | ✅ |
 
 Credenciais em `/root/dados_vps/dados_*`.
 

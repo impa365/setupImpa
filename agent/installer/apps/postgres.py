@@ -12,24 +12,34 @@ NETWORK = __import__("os").environ.get("SETUPIMPA_NETWORK", "network_public")
 TEMPLATE = """version: "3.7"
 services:
 
-## --------------------------- IMPA --------------------------- ##
+## --------------------------- IMPA (Padrão SetupOrion) --------------------------- ##
 
   postgres:
     image: postgres:{version}
-    networks:
-      - {network}
+    command: >
+      postgres
+      -c max_connections=500
+      -c shared_buffers=512MB
+      -c timezone=America/Sao_Paulo
     volumes:
       - {vol_data}:/var/lib/postgresql/data
+    networks:
+      - {network}
     environment:
       - POSTGRES_USER={user}
       - POSTGRES_PASSWORD={password}
       - POSTGRES_DB={database}
+      - TZ=America/Sao_Paulo
     deploy:
       mode: replicated
       replicas: 1
       placement:
         constraints:
           - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1024M
 
 ## --------------------------- IMPA --------------------------- ##
 
@@ -45,7 +55,7 @@ networks:
 """
 
 
-def install(*, version: str = "16-alpine", user: str = "postgres", password: str = "", database: str = "postgres", instance_id: str = "", instance_num: int = 0, **_) -> dict:
+def install(*, version: str = "14", user: str = "postgres", password: str = "", database: str = "postgres", instance_id: str = "", instance_num: int = 0, **_) -> dict:
     if not instance_id:
         instance_id, instance_num = registry.next_instance_id("postgres")
     stack_name = instance_id
@@ -55,7 +65,7 @@ def install(*, version: str = "16-alpine", user: str = "postgres", password: str
     password = password or secrets.token_urlsafe(16)
     user = user or "postgres"
     database = database or "postgres"
-    version = (version or "16-alpine").strip()
+    version = (version or "14").strip()
 
     subprocess.run(["docker", "volume", "create", vol_data], check=False, capture_output=True)
 
@@ -187,7 +197,7 @@ def meta() -> dict:
     return {
         "id": "postgres",
         "name": "PostgreSQL",
-        "description": "Banco de Dados relacional PostgreSQL de alta performance",
+        "description": "Banco de Dados relacional PostgreSQL padrão SetupOrion com tuning de performance e timezone São Paulo.",
         "requires_base": True,
         "requires_domain": False,
         "multi_instance": True,
@@ -197,12 +207,12 @@ def meta() -> dict:
                 "label": "Versão do PostgreSQL",
                 "type": "select",
                 "options": [
-                    {"value": "16-alpine", "label": "PostgreSQL 16 (Alpine - Recomendada)"},
-                    {"value": "15-alpine", "label": "PostgreSQL 15 (Alpine)"},
-                    {"value": "17-alpine", "label": "PostgreSQL 17 (Alpine - Mais recente)"},
-                    {"value": "16", "label": "PostgreSQL 16 (Debian standard)"},
+                    {"value": "14", "label": "PostgreSQL 14 (Padrão SetupOrion - Recomendado / Máxima Estabilidade)"},
+                    {"value": "16", "label": "PostgreSQL 16"},
+                    {"value": "15", "label": "PostgreSQL 15"},
+                    {"value": "17", "label": "PostgreSQL 17 (Mais recente)"},
                 ],
-                "default": "16-alpine",
+                "default": "14",
             },
             {"key": "user", "label": "Usuário", "default": "postgres"},
             {"key": "password", "label": "Senha (vazio = gerar automaticamente)", "default": ""},
