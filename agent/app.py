@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from installer import auth, base, checks, registry, validate
+from installer import auth, base, checks, cloudflare, registry, validate
 from installer.apps import evolution, getfy, hermes, postgres
 
 VERSION = os.environ.get("SETUPIMPA_VERSION", "0.2.0")
@@ -92,6 +92,16 @@ class FinishBaseBody(BaseModel):
 
 class DnsBody(BaseModel):
     domain: str
+
+
+class CloudflareTokenBody(BaseModel):
+    token: str
+
+
+class CloudflareDnsBody(BaseModel):
+    domain: str
+    ip: str | None = None
+    proxied: bool = False
 
 
 class InstallAppBody(BaseModel):
@@ -197,6 +207,67 @@ def finish_base(body: FinishBaseBody, _: dict = Depends(require_auth)):
 @app.post("/api/dns/check")
 def dns_check(body: DnsBody, _: dict = Depends(require_auth)):
     return checks.check_dns(body.domain)
+
+
+# ── Cloudflare DNS automation ─────────────────────────────────────
+
+@app.get("/api/cloudflare/status")
+def cf_status(_: dict = Depends(require_auth)):
+    """Check if Cloudflare token is configured and valid."""
+    if not cloudflare.has_token():
+        return {"ok": False, "configured": False, "error": "token_nao_configurado"}
+    token = cloudflare.get_token()
+    verify = cloudflare.verify_token(token)
+    return {**verify, "configured": True}
+
+
+@app.post("/api/cloudflare/token")
+def cf_save_token(body: CloudflareTokenBody, _: dict = Depends(require_auth)):
+    """Save Cloudflare API token."""
+    token = body.token.strip()
+    if not token:
+        raise HTTPException(400, detail="token_vazio")
+    verify = cloudflare.verify_token(token)
+    if not verify.get("ok"):
+        raise HTTPException(400, detail=verify.get("error", "token_invalido"))
+    cloudflare.save_token(token)
+    return {"ok": True, "status": "active", "message": "Token Cloudflare salvo com sucesso."}
+
+
+@app.post("/api/cloudflare/dns")
+def cf_create_dns(body: CloudflareDnsBody, _: dict = Depends(require_auth)):
+    """Create or update DNS A record via Cloudflare API."""
+    if not cloudflare.has_token():
+        raise HTTPException(400, detail="cloudflare_token_nao_configurado")
+    result = cloudflare.ensure_dns_for_domain(
+        domain=body.domain,
+        ip=body.ip,
+        proxied=body.proxied,
+    )
+    if not result.get("ok"):
+        raise HTTPException(400, detail=result)
+    return result
+
+
+@app.delete("/api/cloudflare/dns/{domain}")
+def cf_delete_dns(domain: str, _: dict = Depends(require_auth)):
+    """Delete a DNS A record via Cloudflare API."""
+    if not cloudflare.has_token():
+        raise HTTPException(400, detail="cloudflare_token_nao_configurado")
+    token = cloudflare.get_token()
+    result = cloudflare.delete_dns_record(domain, token)
+    if not result.get("ok"):
+        raise HTTPException(400, detail=result)
+    return result
+
+
+@app.post("/api/cloudflare/zone")
+def cf_find_zone(body: DnsBody, _: dict = Depends(require_auth)):
+    """Find Cloudflare zone for a domain."""
+    if not cloudflare.has_token():
+        raise HTTPException(400, detail="cloudflare_token_nao_configurado")
+    token = cloudflare.get_token()
+    return cloudflare.find_zone(body.domain, token)
 
 
 # ── App catalog (multi-instance) ───────────────────────────────────

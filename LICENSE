@@ -50,3 +50,13 @@ ISENÇÃO DE GARANTIA:
   RESPONSABILIDADE DECORRENTE DO USO DESTE SOFTWARE.
 
 Para dúvidas ou permissões adicionais, entre em contato com a IMPA 365.
+
+
+CRÉDITOS DE TERCEIROS:
+
+  Este projeto utiliza conceitos, padrões de deployment e referências
+  estruturais inspirados no SetupOrion (https://github.com/oriondesign2015/setuporion),
+  projeto de código aberto desenvolvido por Orion Design.
+
+  Reconhecemos e agradecemos a contribuição do SetupOrion como referência
+  para a arquitetura de deployment Docker Swarm + Portainer + Traefik.

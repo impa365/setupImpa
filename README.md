@@ -92,6 +92,13 @@ Install:
 - `GET /api/validate/{app}`
 - `GET /api/credentials/{instance_id}`
 
+Cloudflare DNS:
+- `GET /api/cloudflare/status` — token configurado/válido?
+- `POST /api/cloudflare/token` `{ "token": "..." }` — salvar API token
+- `POST /api/cloudflare/dns` `{ "domain", "ip?", "proxied?" }` — criar/atualizar A record
+- `DELETE /api/cloudflare/dns/{domain}` — remover A record
+- `POST /api/cloudflare/zone` `{ "domain" }` — buscar zone_id
+
 Instances:
 - `GET /api/instances` — todas as instâncias
 - `GET /api/instances/{app_id}` — instâncias de um app
@@ -141,6 +148,7 @@ setupimpa/
       auth.py                  # Admin + sessões PBKDF2
       base.py                  # Traefik + Portainer
       checks.py                # Preflight / DNS
+      cloudflare.py            # Cloudflare DNS automation
       portainer_client.py      # Portainer API
       registry.py              # Multi-instance registry
       validate.py              # Pós-deploy check
@@ -162,3 +170,14 @@ setupimpa/
 - No primeiro acesso o usuario define login/senha do painel
 - Feche a porta 8877 apos o setup (`ufw deny 8877` / security group)
 - Senhas do painel nunca em texto puro (PBKDF2)
+
+## Créditos
+
+Este projeto utiliza conceitos, padrões de deployment e referências
+estruturais inspirados no **[SetupOrion](https://github.com/oriondesign2015/setuporion)**,
+projeto de código aberto desenvolvido por **Orion Design**.
+
+Reconhecemos e agradecemos a contribuição do SetupOrion como referência
+para a arquitetura de deployment Docker Swarm + Portainer + Traefik.
+
+Desenvolvido por **IMPA 365** — [impa365.com](https://impa365.com)
