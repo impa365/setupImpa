@@ -1,0 +1,392 @@
+"""SetupImpa Agent — FastAPI panel backend (multi-instance)."""
+from __future__ import annotations
+
+import logging
+import os
+import threading
+import uuid
+from pathlib import Path
+from typing import Any
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from installer import auth, base, checks, registry, validate
+from installer.apps import evolution, getfy, hermes, postgres
+
+VERSION = os.environ.get("SETUPIMPA_VERSION", "0.2.0")
+STATIC = Path(__file__).resolve().parent / "static"
+DADOS = Path("/root/dados_vps")
+LOG_FILE = Path("/var/log/setupimpa.log")
+
+_handlers = [logging.StreamHandler()]
+try:
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _handlers.append(logging.FileHandler(LOG_FILE))
+except Exception:
+    pass
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=_handlers,
+)
+log = logging.getLogger("setupimpa")
+
+app = FastAPI(title="SetupImpa", version=VERSION)
+JOBS: dict[str, dict[str, Any]] = {}
+APPS = {
+    "postgres": postgres,
+    "evolution": evolution,
+    "hermes": hermes,
+    "getfy": getfy,
+}
+
+
+def _extract_bearer(
+    authorization: str | None = None,
+    x_setupimpa_token: str | None = None,
+) -> str:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip()
+    return (x_setupimpa_token or "").strip()
+
+
+def require_auth(
+    authorization: str | None = Header(default=None),
+    x_setupimpa_token: str | None = Header(default=None),
+):
+    token = _extract_bearer(authorization, x_setupimpa_token)
+    sess = auth.validate_session(token)
+    if not sess:
+        raise HTTPException(status_code=401, detail="nao_autenticado")
+    return sess
+
+
+class SetupBody(BaseModel):
+    username: str
+    password: str
+
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class AcceptBody(BaseModel):
+    accepted: bool = True
+
+
+class BaseInstallBody(BaseModel):
+    email: str
+    portainer_domain: str
+    user: str = "admin"
+    password: str = ""
+
+
+class FinishBaseBody(BaseModel):
+    confirm_cloudflare: bool = False
+
+
+class DnsBody(BaseModel):
+    domain: str
+
+
+class InstallAppBody(BaseModel):
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class RemoveInstanceBody(BaseModel):
+    instance_id: str
+
+
+# ── Auth endpoints ──────────────────────────────────────────────────
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "version": VERSION, "name": "SetupImpa"}
+
+
+@app.get("/api/auth/status")
+def auth_status(
+    authorization: str | None = Header(default=None),
+    x_setupimpa_token: str | None = Header(default=None),
+):
+    token = _extract_bearer(authorization, x_setupimpa_token)
+    st = auth.status(token)
+    return {**st, "version": VERSION}
+
+
+@app.post("/api/auth/setup")
+def auth_setup(body: SetupBody):
+    result = auth.create_admin(body.username, body.password)
+    if not result.get("ok"):
+        raise HTTPException(400, detail=result.get("error", "setup_failed"))
+    login = auth.login(body.username, body.password)
+    if not login.get("ok"):
+        raise HTTPException(500, detail="setup_ok_login_failed")
+    return login
+
+
+@app.post("/api/auth/login")
+def auth_login(body: LoginBody):
+    result = auth.login(body.username, body.password)
+    if not result.get("ok"):
+        raise HTTPException(401, detail=result.get("error", "login_failed"))
+    return result
+
+
+@app.post("/api/auth/logout")
+def auth_logout(
+    authorization: str | None = Header(default=None),
+    x_setupimpa_token: str | None = Header(default=None),
+):
+    token = _extract_bearer(authorization, x_setupimpa_token)
+    auth.logout(token)
+    return {"ok": True}
+
+
+# ── Status / preflight ─────────────────────────────────────────────
+
+@app.get("/api/status")
+def status(_: dict = Depends(require_auth)):
+    pf = checks.run_preflight()
+    return {
+        "version": VERSION,
+        "public_ip": pf.get("public_ip"),
+        "base_installed": pf.get("base_installed"),
+        "accepted_risk": pf.get("accepted_risk"),
+        "preflight": pf,
+    }
+
+
+@app.post("/api/preflight")
+def preflight(_: dict = Depends(require_auth)):
+    return checks.run_preflight()
+
+
+@app.post("/api/accept")
+def accept(body: AcceptBody, _: dict = Depends(require_auth)):
+    DADOS.mkdir(parents=True, exist_ok=True)
+    if body.accepted:
+        (DADOS / "setupimpa_accepted").write_text("yes\n", encoding="utf-8")
+    return {"ok": True, "accepted_risk": True}
+
+
+# ── Base install ────────────────────────────────────────────────────
+
+@app.post("/api/install/base")
+def install_base(body: BaseInstallBody, _: dict = Depends(require_auth)):
+    if not (DADOS / "setupimpa_accepted").exists():
+        raise HTTPException(400, detail="aceite_risco_pendente")
+    return base.install_base(
+        email=body.email,
+        portainer_domain=body.portainer_domain,
+        user=body.user,
+        password=body.password,
+    )
+
+
+@app.post("/api/install/base/finish")
+def finish_base(body: FinishBaseBody, _: dict = Depends(require_auth)):
+    return base.finish_base_after_dns(confirm_cloudflare=body.confirm_cloudflare)
+
+
+@app.post("/api/dns/check")
+def dns_check(body: DnsBody, _: dict = Depends(require_auth)):
+    return checks.check_dns(body.domain)
+
+
+# ── App catalog (multi-instance) ───────────────────────────────────
+
+@app.get("/api/apps")
+def list_apps(_: dict = Depends(require_auth)):
+    base_ok = checks.stack_exists("traefik") and checks.stack_exists("portainer")
+    items = []
+    for app_id, mod in APPS.items():
+        m = mod.meta()
+        instances = registry.list_by_app(m["id"])
+        items.append({
+            **m,
+            "instance_count": len(instances),
+            "instances": instances,
+            "blocked": m.get("requires_base") and not base_ok,
+        })
+    items.insert(0, {
+        "id": "base",
+        "name": "Traefik + Portainer",
+        "description": "Infra base IMPA-hardened (obrigatorio)",
+        "requires_base": False,
+        "requires_domain": True,
+        "multi_instance": False,
+        "installed": base_ok,
+        "instance_count": 1 if base_ok else 0,
+        "instances": [],
+        "blocked": False,
+        "fields": [],
+    })
+    return {"apps": items, "base_installed": base_ok}
+
+
+# ── Install app (creates new instance) ─────────────────────────────
+
+def _run_job(job_id: str, fn, kwargs: dict):
+    JOBS[job_id]["status"] = "running"
+    try:
+        result = fn(**kwargs)
+        JOBS[job_id]["status"] = "done" if result.get("ok") else "error"
+        JOBS[job_id]["result"] = result
+    except Exception as e:
+        log.exception("job %s failed", job_id)
+        JOBS[job_id]["status"] = "error"
+        JOBS[job_id]["result"] = {"ok": False, "error": str(e)}
+
+
+def domain_already_used(domain: str) -> str | None:
+    """Check if a domain is already used by any registered instance. Returns instance_id or None."""
+    if not domain:
+        return None
+    domain = checks.normalize_domain(domain)
+    for inst in registry.list_all():
+        if checks.normalize_domain(inst.get("domain", "")) == domain:
+            return inst.get("instance_id")
+    return None
+
+
+@app.post("/api/install/{app_id}")
+def install_app(app_id: str, body: InstallAppBody, _: dict = Depends(require_auth)):
+    if app_id not in APPS:
+        raise HTTPException(404, detail="app_desconhecido")
+    if not (checks.stack_exists("traefik") and checks.stack_exists("portainer")):
+        raise HTTPException(400, detail="base_obrigatoria")
+
+    # ── Anti-substitution: check domain collision ──
+    domain = body.params.get("domain", "")
+    if domain:
+        existing = domain_already_used(domain)
+        if existing:
+            raise HTTPException(
+                409,
+                detail={
+                    "error": "dominio_em_uso",
+                    "message": f"O domínio '{domain}' já está em uso pela instância '{existing}'. Use um domínio diferente ou remova a instância existente primeiro.",
+                    "existing_instance": existing,
+                },
+            )
+
+    # Resolve instance_id and instance_num
+    instance_id, instance_num = registry.next_instance_id(app_id)
+
+    # ── Anti-substitution: check stack collision ──
+    if checks.stack_exists(instance_id):
+        raise HTTPException(
+            409,
+            detail={
+                "error": "stack_existente",
+                "message": f"Já existe uma stack Docker '{instance_id}' rodando. Remova-a primeiro pelo painel ou use 'docker stack rm {instance_id}'.",
+                "existing_stack": instance_id,
+            },
+        )
+
+    params = {**body.params, "instance_id": instance_id, "instance_num": instance_num}
+
+    job_id = str(uuid.uuid4())
+    JOBS[job_id] = {"id": job_id, "app": app_id, "instance_id": instance_id, "status": "queued", "result": None}
+    t = threading.Thread(target=_run_job, args=(job_id, APPS[app_id].install, params), daemon=True)
+    t.start()
+    return {"ok": True, "job_id": job_id, "instance_id": instance_id, "instance_num": instance_num}
+
+
+@app.get("/api/install/{job_id}")
+def job_status(job_id: str, _: dict = Depends(require_auth)):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, detail="job_nao_encontrado")
+    return job
+
+
+# ── Instance management ────────────────────────────────────────────
+
+@app.get("/api/instances")
+def list_instances(_: dict = Depends(require_auth)):
+    return {"ok": True, "instances": registry.list_all()}
+
+
+@app.get("/api/instances/{app_id}")
+def list_app_instances(app_id: str, _: dict = Depends(require_auth)):
+    return {"ok": True, "app": app_id, "instances": registry.list_by_app(app_id)}
+
+
+@app.get("/api/instance/{instance_id}")
+def get_instance(instance_id: str, _: dict = Depends(require_auth)):
+    inst = registry.get(instance_id)
+    if not inst:
+        raise HTTPException(404, detail="instancia_nao_encontrada")
+    return {"ok": True, **inst}
+
+
+@app.delete("/api/instance/{instance_id}")
+def remove_instance(instance_id: str, _: dict = Depends(require_auth)):
+    inst = registry.get(instance_id)
+    if not inst:
+        raise HTTPException(404, detail="instancia_nao_encontrada")
+    stack_name = inst.get("stack_name", instance_id)
+    rm = registry.remove_stack(stack_name)
+    registry.unregister(instance_id)
+    # Remove dados file
+    dados_file = DADOS / f"dados_{instance_id}"
+    if dados_file.exists():
+        dados_file.unlink()
+    return {"ok": True, "instance_id": instance_id, "stack_removed": rm}
+
+
+# ── Validate / credentials ─────────────────────────────────────────
+
+@app.get("/api/validate/{app_id}")
+def validate_app(app_id: str, domain: str | None = None, _: dict = Depends(require_auth)):
+    return validate.validate_app(app_id, domain=domain)
+
+
+@app.get("/api/credentials/{instance_id}")
+def credentials(instance_id: str, _: dict = Depends(require_auth)):
+    # Try registry first
+    inst = registry.get(instance_id)
+    if inst and inst.get("credentials"):
+        return {"ok": True, "app": inst.get("app", instance_id), "instance_id": instance_id, "content": _format_creds(inst)}
+
+    # Legacy fallback: dados files
+    mapping = {
+        "base": "dados_portainer",
+        "portainer": "dados_portainer",
+    }
+    fname = mapping.get(instance_id, f"dados_{instance_id}")
+    path = DADOS / fname
+    if not path.exists():
+        raise HTTPException(404, detail="credenciais_nao_encontradas")
+    return {"ok": True, "app": instance_id, "content": path.read_text(encoding="utf-8", errors="replace")}
+
+
+def _format_creds(inst: dict) -> str:
+    creds = inst.get("credentials", {})
+    lines = [f"[ {inst.get('app', '').upper()} — {inst.get('instance_id', '')} ]", ""]
+    for k, v in creds.items():
+        lines.append(f"{k}: {v}")
+    lines.append(f"\nStack: {inst.get('stack_name', '')}")
+    lines.append(f"Instancia: #{inst.get('instance_num', '')}")
+    return "\n".join(lines)
+
+
+# ── Static SPA ──────────────────────────────────────────────────────
+
+if (STATIC / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(STATIC / "assets")), name="assets")
+
+
+@app.get("/")
+def index():
+    index_path = STATIC / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return {"message": "SetupImpa agent online", "version": VERSION}
