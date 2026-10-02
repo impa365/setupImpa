@@ -298,8 +298,10 @@ def install(
     for vol in (vol_storage, vol_env, vol_redis):
         subprocess.run(["docker", "volume", "create", vol], check=False, capture_output=True)
 
+    network = checks.active_network()
+
     yaml = TEMPLATE.format(
-        network=NETWORK, domain=domain,
+        network=network, domain=domain,
         db_host=db_host, db_name=db_name, db_user=db_user, db_pass=db_pass,
         frame_ancestors=frame_ancestors,
         router=router, svc=svc, mw_name=mw_name,

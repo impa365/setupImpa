@@ -37,16 +37,115 @@ REGISTRY_PATH = Path("/root/dados_vps/setupimpa_instances.json")
 
 def _load() -> dict[str, Any]:
     if not REGISTRY_PATH.exists():
-        return {"instances": {}, "counters": {}}
-    try:
-        return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {"instances": {}, "counters": {}}
+        data = {"instances": {}, "counters": {}}
+    else:
+        try:
+            data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            data = {"instances": {}, "counters": {}}
+
+    # Sincronização e compatibilidade automática com SetupOrion
+    if sync_orion_instances(data):
+        _save(data)
+
+    return data
+
+
+def sync_orion_instances(data: dict[str, Any]) -> bool:
+    """Auto-detecta e importa dados/instâncias existentes do SetupOrion para o SetupImpa."""
+    dados_dir = Path("/root/dados_vps")
+    if not dados_dir.exists():
+        return False
+
+    changed = False
+    instances = data.setdefault("instances", {})
+    counters = data.setdefault("counters", {})
+
+    for p in dados_dir.glob("dados_*"):
+        fname = p.name
+        if fname in ("dados_vps", "dados_portainer"):
+            continue
+
+        # Ex: dados_postgres, dados_postgres_2, dados_evolution, dados_evolution_2
+        stem = fname.replace("dados_", "")
+        parts = stem.split("_")
+
+        if len(parts) > 1 and parts[-1].isdigit():
+            app_id = "_".join(parts[:-1])
+            num = int(parts[-1])
+        else:
+            app_id = stem
+            num = 1
+
+        instance_id = stem
+        if instance_id in instances:
+            continue
+
+        # Lê conteúdo salvo pelo SetupOrion
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+
+        domain = ""
+        creds: dict[str, str] = {}
+        for line in content.splitlines():
+            line = line.strip()
+            if ":" in line:
+                k, v = line.split(":", 1)
+                k_clean = k.strip().lower()
+                v_clean = v.strip()
+                creds[k_clean] = v_clean
+                if k_clean in ("baseurl", "dominio", "url", "painel", "dashboard") and not domain:
+                    domain = v_clean.replace("https://", "").replace("http://", "").split("/")[0]
+
+        instances[instance_id] = {
+            "app": app_id,
+            "instance_id": instance_id,
+            "instance_num": num,
+            "stack_name": instance_id,
+            "domain": domain,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "credentials": creds,
+            "params": {"imported_from": "setup_orion"},
+        }
+        counters[app_id] = max(counters.get(app_id, 0), num)
+        changed = True
+        log.info("Instância SetupOrion importada com sucesso: %s (app: %s, #%d)", instance_id, app_id, num)
+
+    return changed
 
 
 def _save(data: dict[str, Any]) -> None:
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     REGISTRY_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def register_instance(
+    app_id: str,
+    instance_id: str,
+    instance_num: int,
+    *,
+    domain: str = "",
+    stack_name: str = "",
+    stack_id: str | None = None,
+    credentials: dict | None = None,
+    extra: dict | None = None,
+    params: dict | None = None,
+) -> dict[str, Any]:
+    """Helper compatível com omniroute e 9router."""
+    creds = dict(credentials or {})
+    if extra:
+        creds.update(extra)
+    return register(
+        app_id,
+        instance_id,
+        instance_num,
+        stack_name=stack_name or instance_id,
+        domain=domain,
+        credentials=creds,
+        params=params or {},
+    )
 
 
 # ── public helpers ──────────────────────────────────────────────────

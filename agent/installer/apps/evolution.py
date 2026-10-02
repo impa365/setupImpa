@@ -136,9 +136,10 @@ def install(
         subprocess.run(["docker", "volume", "create", vol], check=False, capture_output=True)
 
     version = (version or "v2.2.3").strip()
+    network = checks.active_network()
 
     yaml = TEMPLATE.format(
-        network=NETWORK, domain=domain, api_key=api_key,
+        network=network, domain=domain, api_key=api_key,
         router=router, svc=svc,
         vol_instances=vol_instances, vol_store=vol_store,
         db_env=db_env,

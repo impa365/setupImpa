@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from installer import auth, base, checks, cloudflare, portainer_client, registry, validate
-from installer.apps import evolution, getfy, hermes, omniroute, postgres
+from installer.apps import evolution, getfy, hermes, ninerouter, omniroute, postgres
 
 VERSION = os.environ.get("SETUPIMPA_VERSION", "0.2.0")
 STATIC = Path(__file__).resolve().parent / "static"
@@ -43,6 +43,7 @@ APPS = {
     "hermes": hermes,
     "getfy": getfy,
     "omniroute": omniroute,
+    "9router": ninerouter,
 }
 
 
@@ -293,15 +294,35 @@ def list_apps(_: dict = Depends(require_auth)):
     base_ok = checks.stack_exists("traefik") and checks.stack_exists("portainer")
     pg_instances = postgres.get_available_instances()
     items = []
+    known_ids = set()
     for app_id, mod in APPS.items():
         m = mod.meta()
-        instances = registry.list_by_app(m["id"])
+        aid = m["id"]
+        known_ids.add(aid)
+        instances = registry.list_by_app(aid)
         items.append({
             **m,
             "instance_count": len(instances),
             "instances": instances,
             "blocked": m.get("requires_base") and not base_ok,
         })
+
+    # Detecta e agrega instâncias importadas do SetupOrion (ex: chatwoot, typebot, redis, n8n)
+    for inst in registry.list_all():
+        aid = inst.get("app", "")
+        if aid and aid not in known_ids and aid != "base":
+            inst_list = registry.list_by_app(aid)
+            items.append({
+                "id": aid,
+                "name": inst.get("app", aid).title(),
+                "description": f"Instância gerenciada/importada do SetupOrion ({inst.get('instance_id')})",
+                "instance_count": len(inst_list),
+                "instances": inst_list,
+                "multi_instance": True,
+                "blocked": False,
+                "fields": [],
+            })
+            known_ids.add(aid)
     items.insert(0, {
         "id": "base",
         "name": "Traefik + Portainer",

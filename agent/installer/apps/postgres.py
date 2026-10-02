@@ -69,8 +69,10 @@ def install(*, version: str = "14", user: str = "postgres", password: str = "", 
 
     subprocess.run(["docker", "volume", "create", vol_data], check=False, capture_output=True)
 
+    network = checks.active_network()
+
     yaml = TEMPLATE.format(
-        network=NETWORK, user=user, password=password, database=database,
+        network=network, user=user, password=password, database=database,
         vol_data=vol_data, version=version,
     )
     yaml_path = Path(f"/root/{stack_name}.yaml")

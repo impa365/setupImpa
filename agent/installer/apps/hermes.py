@@ -93,8 +93,10 @@ def install(*, domain: str, user: str = "admin", password: str = "", instance_id
 
     subprocess.run(["docker", "volume", "create", vol_data], check=False, capture_output=True)
 
+    network = checks.active_network()
+
     yaml = TEMPLATE.format(
-        network=NETWORK, domain=domain,
+        network=network, domain=domain,
         user=user, password=password, secret=secret,
         router=router, svc=svc, vol_data=vol_data,
     )

@@ -45,6 +45,7 @@ Sessoes em `/root/dados_vps/setupimpa_sessions.json`.
 | Hermes Agent | `hermes`, `hermes_2`, ... | sim | ✅ |
 | Getfy (checkout) | `getfy`, `getfy_2`, ... | sim | ✅ |
 | OmniRoute Gateway AI | `omniroute`, `omniroute_2`, ... | sim | ✅ |
+| 9Router Gateway AI | `9router`, `9router_2`, ... | sim | ✅ |
 
 Credenciais em `/root/dados_vps/dados_*`.
 

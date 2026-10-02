@@ -52,6 +52,21 @@ def public_ip() -> str:
         return ""
 
 
+def active_network() -> str:
+    """Retorna a rede interna ativa, detectando automaticamente se há SetupOrion na VPS."""
+    dados_vps = Path("/root/dados_vps/dados_vps")
+    if dados_vps.exists():
+        try:
+            for line in dados_vps.read_text(encoding="utf-8", errors="replace").splitlines():
+                if "Rede interna:" in line:
+                    net = line.split("Rede interna:", 1)[1].strip()
+                    if net:
+                        return net
+        except Exception:
+            pass
+    return os.environ.get("SETUPIMPA_NETWORK", "").strip() or "network_public"
+
+
 def validate_domain_name(domain: str) -> bool:
     if not domain or len(domain) > 253:
         return False

@@ -133,7 +133,19 @@ ensure_deps() {
   ok "Dependências básicas instaladas"
 }
 
+detect_setuporion() {
+  if [ -f "$DADOS_DIR/dados_vps" ]; then
+    local orion_net
+    orion_net=$(grep "Rede interna:" "$DADOS_DIR/dados_vps" 2>/dev/null | awk -F': ' '{print $2}' | tr -d '\r\n ' || true)
+    if [ -n "$orion_net" ]; then
+      NETWORK_NAME="$orion_net"
+      ok "Compatibilidade SetupOrion: Rede interna detectada e preservada (${CYAN}$NETWORK_NAME${RESET})"
+    fi
+  fi
+}
+
 ensure_docker() {
+  detect_setuporion
   if command -v docker >/dev/null 2>&1; then
     ok "Docker já está instalado e pronto"
   else

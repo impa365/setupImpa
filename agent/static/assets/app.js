@@ -307,6 +307,17 @@
       requires_postgres: false,
       favorite: true,
     },
+    "9router": {
+      icon: '<img src="/assets/9router.svg" class="app-icon-img" alt="9Router AI" />',
+      name: "9Router Gateway AI",
+      tag: "AI Gateway & Proxy",
+      ram: "2 GB RAM",
+      category: "ai",
+      desc: "Gateway universal para Claude Code, Codex, Cursor, Cline e Copilot conectando a mais de 40 provedores com dashboard visual.",
+      includes: "Proxy universal 40+ IAs, Traefik SSL e Dashboard Web",
+      requires_postgres: false,
+      favorite: true,
+    },
   };
 
   // ── Render Principal (Layout Hosteg com Sidebar) ───────────────
