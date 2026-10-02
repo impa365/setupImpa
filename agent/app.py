@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from installer import auth, base, checks, cloudflare, portainer_client, registry, validate
-from installer.apps import evolution, getfy, hermes, postgres
+from installer.apps import evolution, getfy, hermes, omniroute, postgres
 
 VERSION = os.environ.get("SETUPIMPA_VERSION", "0.2.0")
 STATIC = Path(__file__).resolve().parent / "static"
@@ -42,6 +42,7 @@ APPS = {
     "evolution": evolution,
     "hermes": hermes,
     "getfy": getfy,
+    "omniroute": omniroute,
 }
 
 
@@ -479,5 +480,23 @@ if (STATIC / "assets").exists():
 def index():
     index_path = STATIC / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return {"message": "SetupImpa agent online", "version": VERSION}
+
+
+@app.post("/api/system/update")
+def system_update(auth: str = Depends(require_auth)):
+    """Baixa o pacote oficial mais recente e atualiza o painel instantaneamente."""
+    try:
+        import urllib.request, tarfile, io
+        url = os.environ.get("SETUPIMPA_TARBALL_URL", "https://setup.impa365.com/setupimpa.tar.gz")
+        req = urllib.request.Request(url, headers={"User-Agent": "SetupImpa-SelfUpdate"})
+        data = urllib.request.urlopen(req, timeout=30).read()
+        buf = io.BytesIO(data)
+        install_dir = Path("/opt/setupimpa")
+        with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+            tar.extractall(path=install_dir)
+        return {"ok": True, "message": "Painel atualizado com sucesso! Recarregue a página."}
+    except Exception as e:
+        log.error("Update failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -15,7 +15,7 @@ services:
 ## --------------------------- IMPA --------------------------- ##
 
   postgres:
-    image: postgres:16
+    image: postgres:{version}
     networks:
       - {network}
     volumes:
@@ -45,7 +45,7 @@ networks:
 """
 
 
-def install(*, user: str = "postgres", password: str = "", database: str = "postgres", instance_id: str = "", instance_num: int = 0, **_) -> dict:
+def install(*, version: str = "16-alpine", user: str = "postgres", password: str = "", database: str = "postgres", instance_id: str = "", instance_num: int = 0, **_) -> dict:
     if not instance_id:
         instance_id, instance_num = registry.next_instance_id("postgres")
     stack_name = instance_id
@@ -55,12 +55,13 @@ def install(*, user: str = "postgres", password: str = "", database: str = "post
     password = password or secrets.token_urlsafe(16)
     user = user or "postgres"
     database = database or "postgres"
+    version = (version or "16-alpine").strip()
 
     subprocess.run(["docker", "volume", "create", vol_data], check=False, capture_output=True)
 
     yaml = TEMPLATE.format(
         network=NETWORK, user=user, password=password, database=database,
-        vol_data=vol_data,
+        vol_data=vol_data, version=version,
     )
     yaml_path = Path(f"/root/{stack_name}.yaml")
     yaml_path.write_text(yaml, encoding="utf-8")
@@ -186,13 +187,25 @@ def meta() -> dict:
     return {
         "id": "postgres",
         "name": "PostgreSQL",
-        "description": "Banco PostgreSQL 16 na rede interna Swarm",
+        "description": "Banco de Dados relacional PostgreSQL de alta performance",
         "requires_base": True,
         "requires_domain": False,
         "multi_instance": True,
         "fields": [
-            {"key": "user", "label": "Usuario", "default": "postgres"},
-            {"key": "password", "label": "Senha (vazio = gerar)", "default": ""},
-            {"key": "database", "label": "Database", "default": "postgres"},
+            {
+                "key": "version",
+                "label": "Versão do PostgreSQL",
+                "type": "select",
+                "options": [
+                    {"value": "16-alpine", "label": "PostgreSQL 16 (Alpine - Recomendada)"},
+                    {"value": "15-alpine", "label": "PostgreSQL 15 (Alpine)"},
+                    {"value": "17-alpine", "label": "PostgreSQL 17 (Alpine - Mais recente)"},
+                    {"value": "16", "label": "PostgreSQL 16 (Debian standard)"},
+                ],
+                "default": "16-alpine",
+            },
+            {"key": "user", "label": "Usuário", "default": "postgres"},
+            {"key": "password", "label": "Senha (vazio = gerar automaticamente)", "default": ""},
+            {"key": "database", "label": "Database Inicial", "default": "postgres"},
         ],
     }

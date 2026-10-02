@@ -296,6 +296,17 @@
       requires_postgres: true,
       favorite: true,
     },
+    omniroute: {
+      icon: '<img src="/assets/omniroute.svg" class="app-icon-img" alt="OmniRoute AI" />',
+      name: "OmniRoute Gateway AI",
+      tag: "AI Gateway & Proxy",
+      ram: "1.5 GB RAM",
+      category: "ai",
+      desc: "Roteador inteligente e gateway unificado de LLMs (OpenAI, Claude, Gemini, Groq, DeepSeek) com balanceamento de carga, rate limits e dashboard.",
+      includes: "Redis dedicado, Traefik SSL, Roteador de IAs e Dashboard Web",
+      requires_postgres: false,
+      favorite: true,
+    },
   };
 
   // ── Render Principal (Layout Hosteg com Sidebar) ───────────────
@@ -679,9 +690,12 @@
           </div>
         </div>
 
-        <div style="margin-top: 1.5rem;">
+        <div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">
           <button class="btn-hosteg-primary" id="btn-open-base-modal">
             ${baseInstalled ? "Reconfigurar Domínio da Base" : "Configurar Agora em 1 Minuto ➜"}
+          </button>
+          <button class="btn-table-action" id="btn-update-panel" style="padding: 0.65rem 1.15rem; font-size: 0.88rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+            🔄 Atualizar Painel para Versão Oficial
           </button>
         </div>
       </div>
@@ -808,6 +822,30 @@
       baseBtn.onclick = () => {
         state.activeModal = "base";
         render();
+      };
+    }
+
+    const updateBtn = document.getElementById("btn-update-panel");
+    if (updateBtn) {
+      updateBtn.onclick = () => {
+        openConfirm({
+          icon: "🔄",
+          title: "Atualizar Painel SetupImpa",
+          message: "Deseja baixar os arquivos mais recentes oficiais do SetupImpa diretamente da nuvem? O painel recarregará automaticamente com as novas logos e recursos.",
+          confirmText: "Atualizar Agora",
+          onConfirm: async () => {
+            try {
+              toast("Baixando atualização do painel...", "info");
+              const res = await api("/api/system/update", { method: "POST" });
+              toast(res.message || "Painel atualizado com sucesso!", "ok");
+              setTimeout(() => {
+                window.location.reload(true);
+              }, 1200);
+            } catch (e) {
+              toast("Falha ao atualizar painel: " + e.message, "err");
+            }
+          }
+        });
       };
     }
 
@@ -1102,9 +1140,20 @@
             ${visibleFields.map(f => `
               <div class="form-group">
                 <label>${escapeHtml(f.label)}</label>
-                <input data-field-key="${f.key}" type="text"
-                       placeholder="${f.key === 'domain' ? 'Ex: zap.meusite.com' : ''}"
-                       value="${escapeHtml(state.appForm[f.key] || '')}" />
+                ${(f.type === 'select' || Array.isArray(f.options)) ? `
+                  <select data-field-key="${f.key}">
+                    ${(f.options || []).map(opt => {
+                      const val = typeof opt === 'object' ? opt.value : opt;
+                      const lbl = typeof opt === 'object' ? opt.label : opt;
+                      const sel = (state.appForm[f.key] || f.default) === val ? 'selected' : '';
+                      return `<option value="${escapeHtml(val)}" ${sel}>${escapeHtml(lbl)}</option>`;
+                    }).join("")}
+                  </select>
+                ` : `
+                  <input data-field-key="${f.key}" type="text"
+                         placeholder="${f.key === 'domain' ? 'Ex: zap.meusite.com' : ''}"
+                         value="${escapeHtml(state.appForm[f.key] || '')}" />
+                `}
                 ${f.key === 'domain' ? `<span class="field-hint">Aponte o Registro A no seu provedor para o IP <strong>${escapeHtml(ip)}</strong>.</span>` : ''}
               </div>
             `).join("")}

@@ -16,7 +16,7 @@ services:
 ## --------------------------- IMPA --------------------------- ##
 
   evolution:
-    image: atendai/evolution-api:v2.2.3
+    image: atendai/evolution-api:{version}
     volumes:
       - {vol_instances}:/evolution/instances
       - {vol_store}:/evolution/store
@@ -67,6 +67,7 @@ networks:
 def install(
     *,
     domain: str,
+    version: str = "v2.2.3",
     api_key: str = "",
     db_instance: str = "",
     db_host: str = "",
@@ -134,11 +135,14 @@ def install(
     for vol in (vol_instances, vol_store):
         subprocess.run(["docker", "volume", "create", vol], check=False, capture_output=True)
 
+    version = (version or "v2.2.3").strip()
+
     yaml = TEMPLATE.format(
         network=NETWORK, domain=domain, api_key=api_key,
         router=router, svc=svc,
         vol_instances=vol_instances, vol_store=vol_store,
         db_env=db_env,
+        version=version,
     )
     yaml_path = Path(f"/root/{stack_name}.yaml")
     yaml_path.write_text(yaml, encoding="utf-8")
@@ -202,8 +206,21 @@ def meta() -> dict:
         "requires_postgres": True,
         "multi_instance": True,
         "fields": [
-            {"key": "domain", "label": "Dominio (ex: evo.seudominio.com)", "default": ""},
-            {"key": "api_key", "label": "API Key (vazio = gerar)", "default": ""},
+            {"key": "domain", "label": "Domínio (ex: evo.seudominio.com)", "default": "", "required": True},
+            {
+                "key": "version",
+                "label": "Versão da Evolution API",
+                "type": "select",
+                "options": [
+                    {"value": "v2.2.3", "label": "v2.2.3 (Estável / Recomendada)"},
+                    {"value": "v2.2.2", "label": "v2.2.2"},
+                    {"value": "v2.2.1", "label": "v2.2.1"},
+                    {"value": "v2.2.0", "label": "v2.2.0"},
+                    {"value": "latest", "label": "latest (Última versão)"},
+                ],
+                "default": "v2.2.3",
+            },
+            {"key": "api_key", "label": "API Key (vazio = gerar automaticamente)", "default": ""},
             {"key": "db_instance", "label": "Banco PostgreSQL", "default": ""},
         ],
     }
