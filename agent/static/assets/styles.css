@@ -29,7 +29,9 @@
 }
 
 html, body {
-  min-height: 100%;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   background: var(--bg-body);
   color: var(--text-main);
   font-family: var(--font);
@@ -37,26 +39,36 @@ html, body {
 }
 
 #app {
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 /* ── Hosteg Layout (Sidebar + Main) ─────────────────────────────── */
 .hosteg-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 /* Sidebar */
 .sidebar {
   width: 260px;
+  height: 100vh;
+  max-height: 100vh;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
 }
 
 .sidebar-header {
+  flex-shrink: 0;
   padding: 1.5rem 1.25rem;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -85,6 +97,7 @@ html, body {
 }
 
 .sidebar-section-title {
+  flex-shrink: 0;
   padding: 1.25rem 1.25rem 0.5rem;
   font-size: 0.7rem;
   font-weight: 700;
@@ -99,6 +112,8 @@ html, body {
   gap: 0.25rem;
   padding: 0 0.75rem;
   flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .menu-item {
@@ -156,11 +171,14 @@ html, body {
 }
 
 .sidebar-footer {
+  flex-shrink: 0;
+  margin-top: auto;
   padding: 1.25rem 0.85rem;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.85rem;
+  background: var(--bg-sidebar);
 }
 .server-status-card {
   background: rgba(0, 0, 0, 0.25);
@@ -215,9 +233,35 @@ html, body {
 /* Main Viewport */
 .main-viewport {
   flex: 1;
+  height: 100vh;
+  max-height: 100vh;
   padding: 2rem 2.5rem 4rem;
-  max-width: 1300px;
   overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+/* Scrollbars customizados */
+.main-viewport::-webkit-scrollbar,
+.sidebar-menu::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+.main-viewport::-webkit-scrollbar-track,
+.sidebar-menu::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track {
+  background: rgba(13, 15, 23, 0.4);
+}
+.main-viewport::-webkit-scrollbar-thumb,
+.sidebar-menu::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+.main-viewport::-webkit-scrollbar-thumb:hover,
+.sidebar-menu::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 /* Notice Banner */
@@ -380,11 +424,15 @@ html, body {
   margin-bottom: 0.2rem;
 }
 .app-tag-pill {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #60a5fa;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
 }
 .ram-badge {
   font-size: 0.72rem;
@@ -687,6 +735,9 @@ html, body {
   border-radius: var(--radius-lg);
   max-width: 520px;
   width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
   overflow: hidden;
   animation: modalIn 0.18s ease-out;
@@ -696,6 +747,7 @@ html, body {
   to { opacity: 1; transform: scale(1); }
 }
 .modal-head {
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -727,6 +779,8 @@ html, body {
 }
 .modal-body {
   padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
 }
 .modal-intro {
   font-size: 0.88rem;
@@ -1526,15 +1580,18 @@ html, body {
   border: 1px solid rgba(52, 211, 153, 0.28);
 }
 .orion-mini-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   font-size: 0.62rem;
   font-weight: 700;
-  padding: 0.12rem 0.4rem;
+  padding: 0.12rem 0.42rem;
   border-radius: 4px;
   background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
   color: #60a5fa;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  line-height: 1.2;
 }
 .modal-orion-badge {
   font-size: 0.72rem;
@@ -1554,9 +1611,31 @@ html, body {
 }
 
 @media (max-width: 900px) {
-  .hosteg-layout { flex-direction: column; }
-  .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); }
-  .main-viewport { padding: 1.5rem; }
+  html, body, #app {
+    height: auto;
+    max-height: none;
+    overflow: auto;
+  }
+  .hosteg-layout {
+    flex-direction: column;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    width: 100%;
+  }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .main-viewport {
+    padding: 1.5rem;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
   .apps-grid { grid-template-columns: 1fr; }
   .base-details-grid { grid-template-columns: 1fr; }
   .portainer-cred-box { flex-direction: column; align-items: flex-start; gap: 0.4rem; }

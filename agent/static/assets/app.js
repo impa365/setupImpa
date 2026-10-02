@@ -320,6 +320,172 @@
     },
   };
 
+  // ── Mapeamento Padrão IMPA de Categorias e Metas para Stacks Orion ──
+  const ORION_CATEGORY_TAGS = {
+    atendimento: "Atendimento & Chat",
+    comunicacao: "WhatsApp & Mensageria",
+    ia: "Inteligência Artificial",
+    automacao: "Automação & Workflows",
+    banco: "Banco de Dados",
+    marketing: "Marketing & Envios",
+    produtividade: "Produtividade & CRM",
+    infra: "Infraestrutura & Cloud",
+    seguranca: "Segurança & Auth",
+    desenvolvimento: "Dev & Low-Code",
+    utilitarios: "Utilitários & Ferramentas",
+    outros: "Ferramentas & Web",
+  };
+
+  const APP_SPECIFIC_META = {
+    // Comunicação / WhatsApp
+    evolution_v1: { tag: "WhatsApp API", icon: "🚀", ram: "1 GB RAM" },
+    evolution_v2: { tag: "WhatsApp API", icon: "🚀", ram: "1 GB RAM" },
+    evolution_lite: { tag: "WhatsApp API", icon: "⚡", ram: "1 GB RAM" },
+    evolution_go: { tag: "WhatsApp API", icon: "💨", ram: "1 GB RAM" },
+    wppconnect: { tag: "WhatsApp API", icon: "📱", ram: "1 GB RAM" },
+    wuzapi: { tag: "WhatsApp API", icon: "💬", ram: "1 GB RAM" },
+    quepasa: { tag: "WhatsApp API", icon: "📲", ram: "1 GB RAM" },
+    unoapi: { tag: "WhatsApp API", icon: "💬", ram: "1 GB RAM" },
+    woofed: { tag: "WhatsApp API", icon: "🐶", ram: "1 GB RAM" },
+    chatwoot: { tag: "Atendimento Omnichannel", icon: "💬", ram: "1 GB RAM" },
+    chatwoot_nestor: { tag: "Atendimento Omnichannel", icon: "💬", ram: "1 GB RAM" },
+    typebot: { tag: "Chatbot Visual & Funis", icon: "🤖", ram: "1 GB RAM" },
+    jitsi: { tag: "Videoconferência", icon: "🎥", ram: "2 GB RAM" },
+    mattermost: { tag: "Chat de Equipe", icon: "👥", ram: "1 GB RAM" },
+    humhub: { tag: "Rede Social Corporativa", icon: "🌐", ram: "1 GB RAM" },
+
+    // Automação
+    n8n: { tag: "Automação & Fluxos", icon: "⚡", ram: "1 GB RAM" },
+    n8n_quepasa: { tag: "Automação & WhatsApp", icon: "⚡", ram: "1 GB RAM" },
+    activepieces: { tag: "Automação & Workflows", icon: "🧩", ram: "1 GB RAM" },
+
+    // IA & LLMs
+    dify: { tag: "Agentes & IA", icon: "🧠", ram: "2 GB RAM" },
+    flowise: { tag: "Agentes & LangChain", icon: "🔗", ram: "1 GB RAM" },
+    openwebui: { tag: "Interface LLM / Chat", icon: "🤖", ram: "1 GB RAM" },
+    ollama: { tag: "LLMs & Modelos Locais", icon: "🦙", ram: "4 GB RAM" },
+    anythingllm: { tag: "IA & RAG Corporativo", icon: "💡", ram: "1 GB RAM" },
+    langflow: { tag: "Orquestração de IA", icon: "🌊", ram: "1 GB RAM" },
+    langfuse: { tag: "Observabilidade IA", icon: "🔭", ram: "1 GB RAM" },
+    botpress: { tag: "Chatbot com IA", icon: "🤖", ram: "1 GB RAM" },
+    evoai: { tag: "Inteligência Artificial", icon: "⚡", ram: "1 GB RAM" },
+    firecrawl: { tag: "Web Scraping para IA", icon: "🕷️", ram: "1 GB RAM" },
+    transcrevezap: { tag: "Transcrição com IA", icon: "🎙️", ram: "1 GB RAM" },
+    zep: { tag: "Memória para LLMs", icon: "💾", ram: "1 GB RAM" },
+
+    // Banco de Dados & Storage
+    minio: { tag: "Storage S3", icon: "🪣", ram: "1 GB RAM" },
+    pgAdmin_4: { tag: "Gestão PostgreSQL", icon: "🐘", ram: "1 GB RAM" },
+    phpmyadmin: { tag: "Gestão MySQL", icon: "🐬", ram: "512 MB RAM" },
+    redisinsight: { tag: "Gestão Redis", icon: "🔴", ram: "512 MB RAM" },
+    mongodb: { tag: "Banco NoSQL", icon: "🍃", ram: "1 GB RAM" },
+    clickhouse: { tag: "Banco Analítico", icon: "⚡", ram: "2 GB RAM" },
+    pgbackweb: { tag: "Backups PostgreSQL", icon: "💾", ram: "512 MB RAM" },
+
+    // CRM, Produtividade & No-Code
+    baserow: { tag: "Banco de Dados No-Code", icon: "📊", ram: "1 GB RAM" },
+    nocodb: { tag: "Airtable No-Code", icon: "📋", ram: "1 GB RAM" },
+    nocobase: { tag: "Plataforma No-Code", icon: "🧱", ram: "1 GB RAM" },
+    twentycrm: { tag: "CRM & Vendas", icon: "💼", ram: "1.5 GB RAM" },
+    krayincrm: { tag: "CRM de Vendas", icon: "📈", ram: "1 GB RAM" },
+    evocrm: { tag: "CRM & Gestão", icon: "📊", ram: "1 GB RAM" },
+    calcom: { tag: "Agendamentos Online", icon: "📅", ram: "1 GB RAM" },
+    easyappointments: { tag: "Agendamentos Online", icon: "🗓️", ram: "512 MB RAM" },
+    nextcloud: { tag: "Arquivos & Nuvem", icon: "☁️", ram: "1 GB RAM" },
+    outline: { tag: "Wiki & Documentação", icon: "📝", ram: "1 GB RAM" },
+    wiki: { tag: "Wiki & Conhecimento", icon: "📖", ram: "1 GB RAM" },
+    docmost: { tag: "Wiki Colaborativa", icon: "📚", ram: "1 GB RAM" },
+    documenso: { tag: "Assinatura Digital", icon: "✍️", ram: "1 GB RAM" },
+    docuseal: { tag: "Assinatura de Documentos", icon: "🖋️", ram: "1 GB RAM" },
+    opensign: { tag: "Assinatura Digital", icon: "🔏", ram: "1 GB RAM" },
+    focalboard: { tag: "Kanban & Projetos", icon: "📋", ram: "512 MB RAM" },
+    planka: { tag: "Kanban & Tarefas", icon: "📌", ram: "512 MB RAM" },
+    wekan: { tag: "Quadro Kanban", icon: "🗂️", ram: "512 MB RAM" },
+    openproject: { tag: "Gestão de Projetos", icon: "🎯", ram: "1.5 GB RAM" },
+    affine: { tag: "Workspace Notion-like", icon: "✨", ram: "1 GB RAM" },
+    wordpress: { tag: "CMS & Sites", icon: "📰", ram: "1 GB RAM" },
+    bolt: { tag: "CMS Headless", icon: "⚡", ram: "512 MB RAM" },
+    frappe: { tag: "ERP & Gestão", icon: "🏢", ram: "2 GB RAM" },
+    odoo: { tag: "ERP Empresarial", icon: "🏬", ram: "2 GB RAM" },
+    metabase: { tag: "BI & Dashboards", icon: "📊", ram: "1.5 GB RAM" },
+    excalidraw: { tag: "Quadro Branco & Desenho", icon: "🎨", ram: "512 MB RAM" },
+    wisemapping: { tag: "Mapas Mentais", icon: "🗺️", ram: "512 MB RAM" },
+    checkmate: { tag: "Checklists & Tarefas", icon: "✅", ram: "512 MB RAM" },
+    papra: { tag: "Gestão de Arquivos", icon: "📁", ram: "512 MB RAM" },
+
+    // Desenvolvimento & Low-Code
+    code_server: { tag: "VS Code no Navegador", icon: "💻", ram: "1 GB RAM" },
+    supabase: { tag: "Backend como Serviço", icon: "⚡", ram: "2 GB RAM" },
+    directus: { tag: "Headless CMS & API", icon: "🎯", ram: "1 GB RAM" },
+    strapi: { tag: "Headless CMS", icon: "🚀", ram: "1 GB RAM" },
+    tooljet: { tag: "Low-Code Interno", icon: "🛠️", ram: "1.5 GB RAM" },
+    appsmith: { tag: "Low-Code para Times", icon: "🔨", ram: "1.5 GB RAM" },
+    lowcoder: { tag: "Low-Code Apps", icon: "🧩", ram: "1 GB RAM" },
+    hoppscotch: { tag: "Testes de API", icon: "🛸", ram: "512 MB RAM" },
+
+    // Segurança & Auth
+    authentik: { tag: "Autenticação & SSO", icon: "🔐", ram: "1.5 GB RAM" },
+    keycloak: { tag: "Autenticação & Identity", icon: "🛡️", ram: "1.5 GB RAM" },
+    vaultwarden: { tag: "Cofre de Senhas", icon: "🔑", ram: "512 MB RAM" },
+    passbolt: { tag: "Gestão de Senhas", icon: "🗝️", ram: "512 MB RAM" },
+    duplicati: { tag: "Backup em Nuvem", icon: "💾", ram: "512 MB RAM" },
+
+    // Infra & DevOps
+    uptimekuma: { tag: "Monitoramento de Uptime", icon: "📈", ram: "512 MB RAM" },
+    rabbitmq: { tag: "Filas & Mensageria", icon: "🐇", ram: "1 GB RAM" },
+    kafka: { tag: "Streaming & Mensageria", icon: "📨", ram: "1.5 GB RAM" },
+    netbox: { tag: "Gestão de Infra & IPAM", icon: "🌐", ram: "1 GB RAM" },
+    glpi: { tag: "Helpdesk & Ativos", icon: "🎫", ram: "1 GB RAM" },
+    rustdesk: { tag: "Relay de Acesso Remoto", icon: "🖥️", ram: "512 MB RAM" },
+    ntfy: { tag: "Notificações Push", icon: "🔔", ram: "512 MB RAM" },
+    zerobyte: { tag: "Infraestrutura Leve", icon: "📦", ram: "512 MB RAM" },
+    monitor: { tag: "Monitoramento de Servidor", icon: "📊", ram: "512 MB RAM" },
+
+    // Marketing
+    mautic: { tag: "Automação de Marketing", icon: "📧", ram: "1 GB RAM" },
+    heyform: { tag: "Formulários Online", icon: "📋", ram: "512 MB RAM" },
+    astracampaign: { tag: "Disparador de Mensagens", icon: "📢", ram: "1 GB RAM" },
+    serpbear: { tag: "Rankings & SEO", icon: "📈", ram: "512 MB RAM" },
+
+    // Utilitários
+    stirlingpdf: { tag: "Manipulação de PDF", icon: "📄", ram: "512 MB RAM" },
+    browserless: { tag: "Chrome Headless API", icon: "🌐", ram: "1 GB RAM" },
+    shlink: { tag: "Encurtador de URLs", icon: "🔗", ram: "512 MB RAM" },
+    yourls: { tag: "Encurtador de Links", icon: "✂️", ram: "512 MB RAM" },
+    traccar: { tag: "Rastreamento GPS", icon: "🛰️", ram: "512 MB RAM" },
+    azuracast: { tag: "Rádio Online Web", icon: "📻", ram: "1.5 GB RAM" },
+    omnitools: { tag: "Utilitários para Devs", icon: "🧰", ram: "512 MB RAM" },
+    gotenberg: { tag: "Conversão de Arquivos", icon: "📑", ram: "512 MB RAM" },
+  };
+
+  function resolveAppMeta(a) {
+    if (!a) return { name: "App", tag: "App", icon: "📦", ram: "1 GB RAM", desc: "", includes: "" };
+    const isOrion = a.source === "setuporion";
+    
+    // 1. App oficial registrado
+    if (APP_METAS[a.id]) {
+      return { ...APP_METAS[a.id] };
+    }
+
+    // 2. Metadado específico conhecido
+    const specific = APP_SPECIFIC_META[a.id] || {};
+    const fallbackTag = ORION_CATEGORY_TAGS[a.category] || "Ferramenta";
+
+    return {
+      icon: specific.icon || (isOrion ? "🚀" : "📦"),
+      name: a.name || a.id,
+      tag: specific.tag || fallbackTag,
+      ram: specific.ram || "1 GB RAM",
+      desc: a.description || "",
+      includes: isOrion
+        ? (a.pg_dbs && a.pg_dbs.length > 0
+            ? "Provisiona banco PostgreSQL automático, Traefik SSL e volume persistente"
+            : "Stack Swarm oficial SetupOrion e Traefik SSL")
+        : "Roteador Traefik e rede isolada",
+      favorite: false,
+    };
+  }
+
   // ── Render Principal (Layout Hosteg com Sidebar) ───────────────
   function renderDashboard() {
     const baseInstalled = !!state.status?.base_installed;
@@ -327,16 +493,12 @@
 
     const rawApps = state.apps.filter(a => a.id !== "base");
     const filteredApps = rawApps.filter(a => {
-      const meta = APP_METAS[a.id] || {
-        name: a.name,
-        desc: a.description,
-        category: a.category || "other",
-        favorite: false,
-      };
+      const meta = resolveAppMeta(a);
       const q = state.searchQuery.toLowerCase().trim();
       const matchQuery = !q ||
         (meta.name && meta.name.toLowerCase().includes(q)) ||
         (meta.desc && meta.desc.toLowerCase().includes(q)) ||
+        (meta.tag && meta.tag.toLowerCase().includes(q)) ||
         (a.id && a.id.toLowerCase().includes(q)) ||
         (a.name && a.name.toLowerCase().includes(q)) ||
         (a.description && a.description.toLowerCase().includes(q));
@@ -508,14 +670,7 @@
           </div>
         ` : filteredApps.map(a => {
           const isOrion = a.source === "setuporion";
-          const meta = { ...(APP_METAS[a.id] || {
-            icon: isOrion ? "🚀" : "📦",
-            name: a.name,
-            tag: isOrion ? "SetupOrion Stack" : "App",
-            ram: isOrion ? "1 GB RAM" : "1 GB RAM",
-            desc: a.description,
-            includes: isOrion ? "Stack Swarm oficial SetupOrion e Traefik SSL" : "Roteador Traefik e rede isolada",
-          }) };
+          const meta = resolveAppMeta(a);
 
           // Personalização inteligente do texto "Instala junto"
           const pgs = state.postgresInstances || [];
@@ -630,7 +785,7 @@
                 <tr>
                   <td>
                     <div style="display:flex;align-items:center;gap:0.75rem;">
-                      <span class="inst-avatar-mini">${APP_METAS[inst.app_id]?.icon || '📦'}</span>
+                      <span class="inst-avatar-mini">${resolveAppMeta({ id: inst.app_id }).icon || '📦'}</span>
                       <strong>${escapeHtml(inst.app_name)}</strong>
                     </div>
                   </td>
@@ -1175,7 +1330,7 @@
     const a = state.currentApp;
     if (!a) return "";
     const isOrion = a.source === "setuporion";
-    const meta = APP_METAS[a.id] || { icon: isOrion ? "🚀" : "📦", name: a.name };
+    const meta = resolveAppMeta(a);
     const count = a.instance_count || 0;
     const ip = state.status?.public_ip || "74.1.21.235";
     const needsPg = a.id === "evolution" || a.id === "getfy" || meta.requires_postgres || (isOrion && Array.isArray(a.pg_dbs) && a.pg_dbs.length > 0);
