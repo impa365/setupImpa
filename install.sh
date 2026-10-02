@@ -3,7 +3,12 @@
 # Uso: bash install.sh   ou   bash <(curl -sSL ...)
 set -euo pipefail
 
-SETUPIMPA_VERSION="0.1.0"
+SETUPIMPA_VERSION="0.2.0"
+SETUPIMPA_BASE_URL="${SETUPIMPA_BASE_URL:-https://setupimpa.impa365.com}"
+SETUPIMPA_TARBALL_URL="${SETUPIMPA_TARBALL_URL:-${SETUPIMPA_BASE_URL}/setupimpa.tar.gz}"
+SETUPIMPA_TELEMETRY_URL="${SETUPIMPA_TELEMETRY_URL:-${SETUPIMPA_BASE_URL}/telemetry}"
+SETUPIMPA_RUN_ID=""
+
 AGENT_PORT="${SETUPIMPA_PORT:-8877}"
 INSTALL_DIR="/opt/setupimpa"
 DADOS_DIR="/root/dados_vps"
@@ -19,8 +24,27 @@ RESET='\033[0m'
 
 log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG_FILE" >/dev/null; echo -e "${WHITE}$*${RESET}"; }
 ok()  { echo -e "${GREEN}✓${RESET} ${WHITE}$1${RESET}"; log "OK: $1"; }
-die() { echo -e "${RED}✗${RESET} ${WHITE}$1${RESET}"; log "FATAL: $1"; exit 1; }
+die() {
+  impa_telemetry "failed" || true
+  echo -e "${RED}✗${RESET} ${WHITE}$1${RESET}"; log "FATAL: $1"; exit 1;
+}
 info(){ echo -e "${CYAN}•${RESET} ${WHITE}$1${RESET}"; }
+
+impa_telemetry_init() {
+  SETUPIMPA_RUN_ID="$(date +%s)-$$"
+}
+
+impa_telemetry() {
+  local step="$1"
+  command -v curl >/dev/null 2>&1 || return 0
+  local payload
+  payload=$(printf '{"step":"%s","version":"%s","run":"%s"}' \
+    "$step" "$SETUPIMPA_VERSION" "${SETUPIMPA_RUN_ID:-}")
+  ( curl -fsS -m 4 -X POST "$SETUPIMPA_TELEMETRY_URL" \
+      -A "SetupImpa/${SETUPIMPA_VERSION}" \
+      -H "Content-Type: application/json" \
+      -d "$payload" >/dev/null 2>&1 & ) || true
+}
 
 banner() {
   clear 2>/dev/null || true
@@ -128,11 +152,19 @@ install_agent_files() {
     cp -a "$SCRIPT_DIR/docker-compose.agent.yml" "$INSTALL_DIR/" 2>/dev/null || true
     [ -d "$SCRIPT_DIR/web/dist" ] && mkdir -p "$INSTALL_DIR/agent/static" && cp -a "$SCRIPT_DIR/web/dist/." "$INSTALL_DIR/agent/static/"
   elif [ -d "./agent" ]; then
+    info "Copiando agent de ./agent"
     cp -a ./agent "$INSTALL_DIR/"
     cp -a ./docker-compose.agent.yml "$INSTALL_DIR/" 2>/dev/null || true
     [ -d "./web/dist" ] && mkdir -p "$INSTALL_DIR/agent/static" && cp -a ./web/dist/. "$INSTALL_DIR/agent/static/"
   else
-    die "Arquivos do agent nao encontrados. Rode a partir do repositorio setupimpa/"
+    info "Baixando pacote do SetupImpa de ${SETUPIMPA_TARBALL_URL}..."
+    local tmp_tar="/tmp/setupimpa.tar.gz"
+    if curl -fsSL -m 30 -o "$tmp_tar" "$SETUPIMPA_TARBALL_URL"; then
+      tar -xzf "$tmp_tar" -C "$INSTALL_DIR"
+      rm -f "$tmp_tar"
+    else
+      die "Falha ao baixar pacote SetupImpa de $SETUPIMPA_TARBALL_URL"
+    fi
   fi
   ok "Arquivos instalados em $INSTALL_DIR"
 }
@@ -182,15 +214,23 @@ main() {
   mkdir -p "$(dirname "$LOG_FILE")" "$DADOS_DIR"
   : > "$LOG_FILE"
   log "=== SetupImpa v${SETUPIMPA_VERSION} bootstrap start ==="
+  impa_telemetry_init
+  impa_telemetry "start"
+
   banner
   require_root
   validate_os
   check_disk
   ensure_deps
   ensure_docker
+  impa_telemetry "docker_ready"
+
   generate_token
   install_agent_files
+  impa_telemetry "files_installed"
+
   start_agent
+  impa_telemetry "completed"
   log "=== SetupImpa bootstrap end ==="
 }
 
