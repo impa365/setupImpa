@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from installer import auth, base, checks, cloudflare, registry, validate
+from installer import auth, base, checks, cloudflare, portainer_client, registry, validate
 from installer.apps import evolution, getfy, hermes, postgres
 
 VERSION = os.environ.get("SETUPIMPA_VERSION", "0.2.0")
@@ -202,6 +202,21 @@ def install_base(body: BaseInstallBody, _: dict = Depends(require_auth)):
 @app.post("/api/install/base/finish")
 def finish_base(body: FinishBaseBody, _: dict = Depends(require_auth)):
     return base.finish_base_after_dns(confirm_cloudflare=body.confirm_cloudflare)
+
+
+@app.get("/api/base/info")
+def base_info(_: dict = Depends(require_auth)):
+    dados = portainer_client._read_dados()
+    domain = dados.get("domain", "")
+    url = dados.get("url", f"https://{domain}" if domain else "")
+    return {
+        "ok": bool(dados),
+        "configured": bool(domain),
+        "domain": domain,
+        "url": url,
+        "user": dados.get("user", "admin"),
+        "password": dados.get("pass", ""),
+    }
 
 
 @app.post("/api/dns/check")

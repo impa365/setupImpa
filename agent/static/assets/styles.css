@@ -1123,10 +1123,186 @@ html, body {
   line-height: 1.4;
 }
 
+/* ── Custom In-App Dialog Modal (No browser confirm/alert) ──────── */
+.modal-dialog {
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  padding: 2.2rem 2rem;
+}
+.dialog-icon-badge {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  margin: 0 auto 1.2rem;
+}
+.dialog-icon-badge.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.dialog-icon-badge.warn {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.dialog-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+  color: #fff;
+}
+.dialog-message {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 1.8rem;
+}
+.dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.dialog-actions button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+}
+.btn-hosteg-danger {
+  background: #dc2626;
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-hosteg-danger:hover {
+  background: #b91c1c;
+  box-shadow: 0 0 12px rgba(220, 38, 38, 0.4);
+}
+
+/* ── Painel Técnico & Portainer (Acesso Direto sem SFTP) ────────── */
+.portainer-tech-card {
+  margin-top: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.8rem;
+}
+.portainer-tech-header {
+  margin-bottom: 1.5rem;
+}
+.portainer-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.tech-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: rgba(147, 51, 234, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(147, 51, 234, 0.3);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.portainer-tag-pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+.portainer-tech-header h3 {
+  font-size: 1.2rem;
+  margin-bottom: 0.35rem;
+  color: #fff;
+}
+.portainer-tech-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 800px;
+}
+.portainer-creds-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.2rem;
+  margin-bottom: 1.5rem;
+}
+.portainer-cred-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.cred-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  min-width: 170px;
+}
+.cred-value-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.cred-value-row code {
+  font-family: monospace;
+  font-size: 0.92rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
+  color: #a5f3fc;
+}
+.portainer-url-link {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #60a5fa;
+  text-decoration: none;
+}
+.portainer-url-link:hover {
+  text-decoration: underline;
+}
+.btn-copy-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-copy-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.portainer-footer-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 900px) {
   .hosteg-layout { flex-direction: column; }
   .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); }
   .main-viewport { padding: 1.5rem; }
   .apps-grid { grid-template-columns: 1fr; }
   .base-details-grid { grid-template-columns: 1fr; }
+  .portainer-cred-box { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
 }

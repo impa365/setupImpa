@@ -10,11 +10,14 @@
     msg: null,
     currentApp: null,
     baseForm: { email: "", portainer_domain: "", user: "admin", password: "" },
+    baseInfo: null,
+    showPortainerPass: false,
     appForm: {},
     authForm: { username: "", password: "", password2: "" },
     expandedApp: null,
-    activeModal: null, // 'base' | 'app' | 'creds' | 'cf' | 'progress'
+    activeModal: null, // 'base' | 'app' | 'creds' | 'cf' | 'progress' | 'dialog'
     modalData: null,
+    dialog: null, // { title, message, icon, confirmText, cancelText, danger, onConfirm }
     cfConfigured: false,
     cfStatus: null,
     activeTab: "marketplace", // 'marketplace' | 'instances' | 'cloudflare' | 'base'
@@ -76,6 +79,7 @@
       }, 5000);
     }
   }
+  window.__toast = toast;
 
   function renderToast() {
     let el = document.getElementById("toast-container");
@@ -111,6 +115,17 @@
     localStorage.removeItem("setupimpa_session");
     localStorage.removeItem("setupimpa_user");
   }
+
+  function openConfirm({ title, message, icon = "⚠️", confirmText = "Confirmar", cancelText = "Cancelar", danger = true, onConfirm }) {
+    state.dialog = { title, message, icon, confirmText, cancelText, danger, onConfirm };
+    state.activeModal = "dialog";
+    render();
+  }
+  window.__closeDialog = () => {
+    state.dialog = null;
+    state.activeModal = null;
+    render();
+  };
 
   // ── Auth Screen (Login / Primeiro Acesso) ───────────────────────
   function renderAuth() {
@@ -202,7 +217,7 @@
     } catch (_) {}
 
     state.step = "dashboard";
-    await loadApps();
+    await Promise.all([loadApps(), loadBaseInfo()]);
     render();
   }
 
@@ -216,6 +231,13 @@
     } catch (e) {
       toast("Falha ao carregar catálogo: " + e.message, "err");
     }
+  }
+
+  async function loadBaseInfo() {
+    try {
+      const res = await api("/api/base/info");
+      state.baseInfo = res;
+    } catch (_) {}
   }
 
   // ── Metadados dos Apps (Estilo Hosteg) ──────────────────────────
@@ -335,7 +357,7 @@
                 <span class="dot online"></span>
                 <span>Servidor Online</span>
               </div>
-              <div class="server-ip-box" title="Clique para copiar" onclick="navigator.clipboard.writeText('${ip}'); alert('IP copiado: ${ip}')">
+              <div class="server-ip-box" title="Clique para copiar" onclick="navigator.clipboard.writeText('${ip}'); window.__toast('IP ${escapeHtml(ip)} copiado!', 'ok')">
                 <code>${escapeHtml(ip)}</code>
                 <span>📋</span>
               </div>
@@ -594,6 +616,11 @@
 
   // ── Tab: Base do Servidor ────────────────────────────────────────
   function renderBaseTab(baseInstalled, ip) {
+    const info = state.baseInfo || {};
+    const portainerUrl = info.url || (info.domain ? `https://${info.domain}` : "");
+    const portainerUser = info.user || "admin";
+    const portainerPass = info.password || "";
+
     return `
       <div class="page-title-row">
         <div>
@@ -634,6 +661,68 @@
           </button>
         </div>
       </div>
+
+      ${baseInstalled && portainerUrl ? `
+        <!-- Painel Técnico & Portainer (Acesso Direto sem SFTP) -->
+        <div class="portainer-tech-card">
+          <div class="portainer-tech-header">
+            <div class="portainer-badge-row">
+              <span class="tech-badge">PAINEL TÉCNICO & GERENCIADOR</span>
+              <span class="portainer-tag-pill">🐳 Portainer CE</span>
+            </div>
+            <h3>Acesso Administrativo ao Portainer</h3>
+            <p class="portainer-tech-desc">
+              O Portainer roda em segundo plano gerenciando o cluster Docker Swarm. Você pode acessá-lo diretamente pelo navegador quando precisar de configurações avançadas, sem precisar de SFTP ou terminal SSH.
+            </p>
+          </div>
+
+          <div class="portainer-creds-container">
+            <div class="portainer-cred-box">
+              <span class="cred-label">Endereço Web (URL):</span>
+              <div class="cred-value-row">
+                <a href="${escapeHtml(portainerUrl)}" target="_blank" rel="noopener" class="portainer-url-link">
+                  🔗 ${escapeHtml(portainerUrl)} ↗
+                </a>
+                <button class="btn-copy-chip" onclick="navigator.clipboard.writeText('${escapeHtml(portainerUrl)}'); window.__toast('Link do Portainer copiado!', 'ok')">
+                  📋 Copiar Link
+                </button>
+              </div>
+            </div>
+
+            <div class="portainer-cred-box">
+              <span class="cred-label">Usuário Administrador:</span>
+              <div class="cred-value-row">
+                <code>${escapeHtml(portainerUser)}</code>
+                <button class="btn-copy-chip" onclick="navigator.clipboard.writeText('${escapeHtml(portainerUser)}'); window.__toast('Usuário copiado!', 'ok')">
+                  📋 Copiar Usuário
+                </button>
+              </div>
+            </div>
+
+            <div class="portainer-cred-box">
+              <span class="cred-label">Senha de Acesso:</span>
+              <div class="cred-value-row">
+                <code>${state.showPortainerPass ? escapeHtml(portainerPass) : "••••••••••••••••••••"}</code>
+                <button class="btn-copy-chip" id="btn-toggle-portainer-pass" type="button">
+                  ${state.showPortainerPass ? "🙈 Ocultar" : "👁️ Revelar"}
+                </button>
+                <button class="btn-copy-chip" onclick="navigator.clipboard.writeText('${escapeHtml(portainerPass)}'); window.__toast('Senha copiada!', 'ok')">
+                  📋 Copiar Senha
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="portainer-footer-actions">
+            <a href="${escapeHtml(portainerUrl)}" target="_blank" rel="noopener" class="btn-hosteg-primary">
+              Abrir Portainer no Navegador ↗
+            </a>
+            <button class="btn-hosteg-outline" id="btn-view-portainer-raw-creds" type="button">
+              📄 Ver Arquivo /root/dados_vps/dados_portainer
+            </button>
+          </div>
+        </div>
+      ` : ""}
     `;
   }
 
@@ -642,6 +731,9 @@
     app.querySelectorAll("[data-tab]").forEach(btn => {
       btn.onclick = () => {
         state.activeTab = btn.dataset.tab;
+        if (state.activeTab === "base") {
+          loadBaseInfo();
+        }
         render();
       };
     });
@@ -709,21 +801,55 @@
       };
     });
 
+    // Remover Instância com Modal Customizado (SEM popup de navegador!)
     app.querySelectorAll("[data-delete-inst]").forEach(btn => {
-      btn.onclick = async () => {
+      btn.onclick = () => {
         const instId = btn.dataset.deleteInst;
-        if (!confirm(`Remover a instância "${instId}"?\nO container será desligado e o domínio será liberado.`)) return;
-        try {
-          toast(`Removendo ${instId}...`, "info");
-          await api(`/api/instance/${instId}`, { method: "DELETE" });
-          toast(`Instância ${instId} removida com sucesso.`, "ok");
-          await loadApps();
-          render();
-        } catch (e) {
-          toast("Erro ao remover: " + e.message, "err");
-        }
+        openConfirm({
+          title: `Remover a Instância "${instId}"?`,
+          message: "O container será desligado e o domínio será liberado. Os dados desta instância serão removidos do cluster Swarm.",
+          icon: "🗑️",
+          confirmText: "Sim, Remover Instância",
+          cancelText: "Cancelar",
+          danger: true,
+          onConfirm: async () => {
+            try {
+              toast(`Removendo ${instId}...`, "info");
+              await api(`/api/instance/${instId}`, { method: "DELETE" });
+              toast(`Instância ${instId} removida com sucesso.`, "ok");
+              await loadApps();
+              render();
+            } catch (e) {
+              toast("Erro ao remover: " + e.message, "err");
+            }
+          },
+        });
       };
     });
+
+    // Alternar visibilidade da senha do Portainer
+    const togglePassBtn = document.getElementById("btn-toggle-portainer-pass");
+    if (togglePassBtn) {
+      togglePassBtn.onclick = () => {
+        state.showPortainerPass = !state.showPortainerPass;
+        render();
+      };
+    }
+
+    // Ver credenciais brutas do Portainer
+    const viewRawPortainerBtn = document.getElementById("btn-view-portainer-raw-creds");
+    if (viewRawPortainerBtn) {
+      viewRawPortainerBtn.onclick = async () => {
+        try {
+          const res = await api("/api/credentials/portainer");
+          state.modalData = { instance_id: "portainer", creds: res.content };
+          state.activeModal = "creds";
+          render();
+        } catch (e) {
+          toast("Erro ao buscar credenciais do Portainer: " + e.message, "err");
+        }
+      };
+    }
 
     const saveCfBtn = document.getElementById("btn-tab-save-cf");
     if (saveCfBtn) {
@@ -761,14 +887,26 @@
     if (state.activeModal === "app") return renderAppModal();
     if (state.activeModal === "creds") return renderCredsModal();
     if (state.activeModal === "progress") return renderProgressModal();
+    if (state.activeModal === "dialog") return renderDialogModal();
     return "";
   }
 
   function closeModal() {
     if (state.activeModal === "progress" && !state.progress.done && !state.progress.error) {
-      if (!confirm("A instalação ainda está em andamento. Deseja realmente fechar o acompanhamento visual?")) {
-        return;
-      }
+      openConfirm({
+        title: "Instalação em Andamento",
+        message: "A instalação ainda está rodando no servidor. Deseja realmente fechar o acompanhamento visual da tela?",
+        icon: "⚠️",
+        confirmText: "Sim, Fechar Janela",
+        cancelText: "Continuar Acompanhando",
+        danger: false,
+        onConfirm: () => {
+          state.activeModal = null;
+          state.modalData = null;
+          render();
+        },
+      });
+      return;
     }
     state.activeModal = null;
     state.modalData = null;
@@ -776,7 +914,32 @@
   }
   window.__closeModal = closeModal;
 
-  // Modal 1: Configuração da Base (Zero menção a Portainer!)
+  // Modal 0: Diálogo de Confirmação Customizado (Substitui confirm/alert nativos do navegador)
+  function renderDialogModal() {
+    const d = state.dialog;
+    if (!d) return "";
+    return `
+      <div class="modal-backdrop">
+        <div class="modal-box modal-dialog">
+          <div class="dialog-icon-badge ${d.danger ? "danger" : "warn"}">
+            ${d.icon || "⚠️"}
+          </div>
+          <h3 class="dialog-title">${escapeHtml(d.title)}</h3>
+          <p class="dialog-message">${escapeHtml(d.message)}</p>
+          <div class="dialog-actions">
+            <button class="btn-hosteg-outline" onclick="window.__closeDialog()" type="button">
+              ${escapeHtml(d.cancelText || "Cancelar")}
+            </button>
+            <button class="${d.danger ? "btn-hosteg-danger" : "btn-hosteg-primary"}" id="btn-dialog-confirm" type="button">
+              ${escapeHtml(d.confirmText || "Confirmar")}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Modal 1: Configuração da Base (Zero menção a Portainer no Onboarding!)
   function renderBaseModal() {
     const ip = state.status?.public_ip || "74.1.21.235";
     return `
@@ -900,7 +1063,7 @@
             </div>
 
             <div class="modal-actions">
-              <button class="btn-hosteg-primary full" onclick="navigator.clipboard.writeText(${JSON.stringify(data.creds)}); alert('Credenciais copiadas com sucesso!')">
+              <button class="btn-hosteg-primary full" onclick="navigator.clipboard.writeText(${JSON.stringify(data.creds)}); window.__toast('Credenciais copiadas com sucesso!', 'ok')">
                 📋 Copiar Todas as Informações
               </button>
             </div>
@@ -981,6 +1144,17 @@
       closeModal();
     }
 
+    // Botão Confirmar no Diálogo Customizado
+    if (e.target.id === "btn-dialog-confirm") {
+      const fn = state.dialog?.onConfirm;
+      state.dialog = null;
+      state.activeModal = null;
+      render();
+      if (typeof fn === "function") {
+        fn();
+      }
+    }
+
     // Botão Concluir no Stepper de Sucesso
     if (e.target.id === "btn-progress-finish") {
       if (typeof state.progress.onDone === "function") {
@@ -1054,7 +1228,7 @@
 
         await api("/api/install/base/finish", { method: "POST", body: JSON.stringify({ confirm_cloudflare: true }) });
 
-        // Concluído com Sucesso! ZERO senhas do Portainer!
+        // Concluído com Sucesso! ZERO senhas do Portainer no Onboarding!
         state.progress.percent = 100;
         state.progress.steps[3].status = "done";
         state.progress.steps[3].detail = "Rotas liberadas com sucesso";
@@ -1072,7 +1246,7 @@
         state.progress.onDone = async () => {
           closeModal();
           state.activeTab = "marketplace";
-          await loadApps();
+          await Promise.all([loadApps(), loadBaseInfo()]);
           render();
         };
         render();
@@ -1172,7 +1346,7 @@
         state.progress.title = `🎉 ${appMeta.name} Instalado com Sucesso!`;
         state.progress.subtitle = `Instância #${instanceId} está rodando perfeitamente no seu servidor.`;
 
-        // Renderiza APENAS as credenciais da aplicação instalada (NADA de Portainer!)
+        // Renderiza APENAS as credenciais da aplicação instalada
         let credsDisplay = "";
         if (domain) {
           credsDisplay += `
