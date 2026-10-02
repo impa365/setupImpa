@@ -26,6 +26,7 @@
     mcpActiveSnippetTab: "cursor",
     mcpTesting: false,
     mcpTestResult: null,
+    showMcpKey: false,
     searchQuery: "",
     selectedCategory: "all",
     progress: {
@@ -1020,10 +1021,21 @@
     const sseUrl = cfg.sse_url || (ip ? `http://${ip}:8877/mcp/sse?token=${key}` : "");
     const activeSnippet = state.mcpActiveSnippetTab || "cursor";
 
+    const isVisible = Boolean(state.showMcpKey);
+    const maskedToken = "••••••••••••••••••••••••••••••••••••••";
+    const displaySseUrl = isVisible
+      ? sseUrl
+      : (ip ? `http://${ip}:8877/mcp/sse?token=${maskedToken}` : "");
+
+    const snippetKey = isVisible ? key : maskedToken;
+    const snippetSseUrl = isVisible
+      ? sseUrl
+      : (sseUrl ? sseUrl.replace(/token=[^"'\s&]+/, `token=${maskedToken}`) : "");
+
     const cursorSnippet = JSON.stringify({
       "mcpServers": {
         "setupimpa-vps": {
-          "url": sseUrl
+          "url": snippetSseUrl
         }
       }
     }, null, 2);
@@ -1031,7 +1043,7 @@
     const claudeSnippet = JSON.stringify({
       "mcpServers": {
         "setupimpa-vps": {
-          "url": sseUrl
+          "url": snippetSseUrl
         }
       }
     }, null, 2);
@@ -1039,11 +1051,11 @@
     const hermesSnippet = JSON.stringify({
       "name": "SetupImpa VPS Controller",
       "type": "sse",
-      "url": sseUrl,
-      "token": key
+      "url": snippetSseUrl,
+      "token": snippetKey
     }, null, 2);
 
-    const cliSnippet = `python -m mcp.cli --url http://${ip}:8877 --token ${key}`;
+    const cliSnippet = `python -m mcp.cli --url http://${ip}:8877 --token ${snippetKey}`;
 
     let currentSnippet = cursorSnippet;
     if (activeSnippet === "claude") currentSnippet = claudeSnippet;
@@ -1077,7 +1089,10 @@
           <div class="mcp-field-group">
             <label class="mcp-label">Sua Chave de Acesso MCP (API Key Privada)</label>
             <div class="mcp-input-box">
-              <input type="text" readonly value="${escapeHtml(key)}" id="mcp-key-input" class="mcp-input-code" />
+              <input type="${isVisible ? 'text' : 'password'}" readonly value="${escapeHtml(key)}" id="mcp-key-input" class="mcp-input-code" />
+              <button class="btn-toggle-eye" id="btn-toggle-mcp-key" type="button" title="${isVisible ? 'Ocultar Chave' : 'Visualizar Chave'}">
+                ${isVisible ? '🙈 Ocultar' : '👁️ Visualizar'}
+              </button>
               <button class="btn-copy-mini" id="btn-copy-mcp-key" title="Copiar Chave">📋 Copiar Chave</button>
               <button class="btn-regen-mini" id="btn-regen-mcp-key" title="Gerar Nova Chave">🔄 Regenerar Chave</button>
             </div>
@@ -1087,7 +1102,7 @@
           <div class="mcp-field-group">
             <label class="mcp-label">Endpoint Oficial SSE (Server-Sent Events)</label>
             <div class="mcp-input-box">
-              <input type="text" readonly value="${escapeHtml(sseUrl)}" id="mcp-sse-input" class="mcp-input-code" />
+              <input type="text" readonly value="${escapeHtml(displaySseUrl)}" id="mcp-sse-input" class="mcp-input-code" />
               <button class="btn-copy-mini" id="btn-copy-mcp-sse" title="Copiar URL SSE">📋 Copiar URL</button>
             </div>
           </div>
@@ -1344,6 +1359,14 @@
       };
     });
 
+    const btnToggleKey = document.getElementById("btn-toggle-mcp-key");
+    if (btnToggleKey) {
+      btnToggleKey.onclick = () => {
+        state.showMcpKey = !state.showMcpKey;
+        render();
+      };
+    }
+
     const btnCopyKey = document.getElementById("btn-copy-mcp-key");
     if (btnCopyKey) {
       btnCopyKey.onclick = () => {
@@ -1358,9 +1381,11 @@
     const btnCopySse = document.getElementById("btn-copy-mcp-sse");
     if (btnCopySse) {
       btnCopySse.onclick = () => {
-        const sse = state.mcpConfig?.sse_url || "";
-        if (sse) {
-          navigator.clipboard.writeText(sse);
+        const key = state.mcpConfig?.mcp_api_key || "";
+        const ip = state.mcpConfig?.public_ip || state.status?.public_ip || "SEU_IP_VPS";
+        const realSse = state.mcpConfig?.sse_url || `http://${ip}:8877/mcp/sse?token=${key}`;
+        if (realSse) {
+          navigator.clipboard.writeText(realSse);
           toast("URL SSE do MCP copiada com sucesso!", "ok");
         }
       };
@@ -1383,11 +1408,40 @@
     const btnCopySnippet = document.getElementById("btn-copy-mcp-snippet");
     if (btnCopySnippet) {
       btnCopySnippet.onclick = () => {
-        const pre = document.querySelector(".mcp-pre code");
-        if (pre) {
-          navigator.clipboard.writeText(pre.innerText);
-          toast("Configuração copiada para a área de transferência!", "ok");
+        const cfg = state.mcpConfig || {};
+        const key = cfg.mcp_api_key || "";
+        const ip = cfg.public_ip || state.status?.public_ip || "SEU_IP_VPS";
+        const realSseUrl = cfg.sse_url || `http://${ip}:8877/mcp/sse?token=${key}`;
+
+        let realSnippet = JSON.stringify({
+          "mcpServers": {
+            "setupimpa-vps": {
+              "url": realSseUrl
+            }
+          }
+        }, null, 2);
+
+        if (state.mcpActiveSnippetTab === "claude") {
+          realSnippet = JSON.stringify({
+            "mcpServers": {
+              "setupimpa-vps": {
+                "url": realSseUrl
+              }
+            }
+          }, null, 2);
+        } else if (state.mcpActiveSnippetTab === "hermes") {
+          realSnippet = JSON.stringify({
+            "name": "SetupImpa VPS Controller",
+            "type": "sse",
+            "url": realSseUrl,
+            "token": key
+          }, null, 2);
+        } else if (state.mcpActiveSnippetTab === "cli") {
+          realSnippet = `python -m mcp.cli --url http://${ip}:8877 --token ${key}`;
         }
+
+        navigator.clipboard.writeText(realSnippet);
+        toast("Configuração com chave copiada para a área de transferência!", "ok");
       };
     }
 
