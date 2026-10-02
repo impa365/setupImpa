@@ -6,7 +6,13 @@ Desenvolvido pela **IMPA 365**.
 
 ## One-liner (na VPS)
 
-Copie o repositorio para a VPS e rode:
+Execute diretamente como root no terminal SSH:
+
+```bash
+bash <(curl -sSL https://setup.impa365.com)
+```
+
+Ou copie o repositório para a VPS e rode manualmente:
 
 ```bash
 cd setupimpa
