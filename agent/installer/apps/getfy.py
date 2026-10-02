@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from .. import checks, portainer_client, registry, validate
+from . import postgres
 
 NETWORK = __import__("os").environ.get("SETUPIMPA_NETWORK", "network_public")
 
@@ -241,7 +242,8 @@ networks:
 def install(
     *,
     domain: str,
-    db_host: str = "postgres_postgres",
+    db_instance: str = "",
+    db_host: str = "",
     db_name: str = "getfy",
     db_user: str = "postgres",
     db_pass: str = "",
@@ -266,11 +268,32 @@ def install(
     domain = checks.normalize_domain(domain)
     if not checks.validate_domain_name(domain):
         return {"ok": False, "error": "dominio_invalido"}
-    db_pass = db_pass or secrets.token_hex(16)
+
+    if db_instance and not db_host:
+        inst = registry.get(db_instance)
+        if inst and inst.get("credentials"):
+            db_host = inst["credentials"].get("host", f"{db_instance}_postgres")
+            db_user = inst["credentials"].get("user", "postgres")
+            db_pass = inst["credentials"].get("password", "")
+        else:
+            db_host = f"{db_instance}_postgres"
+            dados_file = Path(f"/root/dados_vps/dados_{db_instance}")
+            if dados_file.exists():
+                for line in dados_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if line.startswith("Usuario:"):
+                        db_user = line.split(":", 1)[1].strip()
+                    elif line.startswith("Senha:"):
+                        db_pass = line.split(":", 1)[1].strip()
+
     db_host = db_host or "postgres_postgres"
+    db_pass = db_pass or secrets.token_hex(16)
     db_name = db_name or "getfy"
     db_user = db_user or "postgres"
     frame_ancestors = frame_ancestors.strip() or f"https://{domain}"
+
+    # Cria a database "getfy" no container PostgreSQL selecionado
+    target_pg = db_instance or "postgres"
+    postgres.ensure_database(target_pg, db_name)
 
     for vol in (vol_storage, vol_env, vol_redis):
         subprocess.run(["docker", "volume", "create", vol], check=False, capture_output=True)
@@ -358,9 +381,11 @@ def meta() -> dict:
         "description": "Checkout / pagamentos (app + queue + scheduler + Redis) com Traefik e embed CSP",
         "requires_base": True,
         "requires_domain": True,
+        "requires_postgres": True,
         "multi_instance": True,
         "fields": [
             {"key": "domain", "label": "Dominio (ex: pay.seudominio.com)", "default": ""},
+            {"key": "db_instance", "label": "Banco PostgreSQL", "default": ""},
             {"key": "db_host", "label": "Host Postgres (stack interna)", "default": "postgres_postgres"},
             {"key": "db_name", "label": "Database", "default": "getfy"},
             {"key": "db_user", "label": "Usuario DB", "default": "postgres"},

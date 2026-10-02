@@ -119,6 +119,69 @@ Instancia: #{instance_num}
     }
 
 
+def get_available_instances() -> list[dict]:
+    """List all running/configured PostgreSQL instances."""
+    instances = registry.list_by_app("postgres")
+    out = []
+    seen = set()
+    for inst in instances:
+        iid = inst.get("instance_id", "")
+        seen.add(iid)
+        creds = inst.get("credentials", {})
+        out.append({
+            "instance_id": iid,
+            "instance_num": inst.get("instance_num", 1),
+            "host": creds.get("host", f"{iid}_postgres"),
+            "port": creds.get("port", 5432),
+            "user": creds.get("user", "postgres"),
+            "password": creds.get("password", ""),
+            "database": creds.get("database", "postgres"),
+            "label": f"PostgreSQL #{inst.get('instance_num', 1)} ({iid})",
+        })
+
+    # Fallback: check if 'postgres' stack exists in Swarm even if not yet in registry
+    if "postgres" not in seen and checks.stack_exists("postgres"):
+        dados_file = Path("/root/dados_vps/dados_postgres")
+        user = "postgres"
+        pwd = ""
+        if dados_file.exists():
+            for line in dados_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("Usuario:"):
+                    user = line.split(":", 1)[1].strip()
+                elif line.startswith("Senha:"):
+                    pwd = line.split(":", 1)[1].strip()
+        out.insert(0, {
+            "instance_id": "postgres",
+            "instance_num": 1,
+            "host": "postgres_postgres",
+            "port": 5432,
+            "user": user,
+            "password": pwd,
+            "database": "postgres",
+            "label": "PostgreSQL #1 (postgres)",
+        })
+    return out
+
+
+def ensure_database(db_instance: str, db_name: str) -> bool:
+    """Ensure a database exists inside the PostgreSQL container."""
+    if not db_name or db_name == "postgres":
+        return True
+    try:
+        # Find container id by service name
+        cmd = (
+            f"cid=$(docker ps -q --filter name={db_instance}_postgres | head -n 1); "
+            f'if [ -n "$cid" ]; then '
+            f'  docker exec "$cid" psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = \'{db_name}\'" | grep -q 1 || '
+            f'  docker exec "$cid" psql -U postgres -c "CREATE DATABASE {db_name};"; '
+            f"fi"
+        )
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def meta() -> dict:
     return {
         "id": "postgres",

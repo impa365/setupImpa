@@ -6,6 +6,7 @@
     auth: null,
     status: null,
     apps: [],
+    postgresInstances: [],
     step: "loading",
     msg: null,
     currentApp: null,
@@ -225,6 +226,7 @@
     try {
       const data = await api("/api/apps");
       state.apps = data.apps || [];
+      state.postgresInstances = data.postgres_instances || [];
       if (data.base_installed !== undefined && state.status) {
         state.status.base_installed = data.base_installed;
       }
@@ -259,7 +261,8 @@
       ram: "1 GB RAM",
       category: "whatsapp",
       desc: "Conecta números de WhatsApp aos seus sistemas, robôs e automações por API com suporte a webhooks.",
-      includes: "Banco PostgreSQL isolado, SSL grátis e Rotas Traefik",
+      includes: "Banco PostgreSQL, SSL grátis e Rotas Traefik",
+      requires_postgres: true,
       favorite: true,
     },
     hermes: {
@@ -290,6 +293,7 @@
       category: "sales",
       desc: "Plataforma completa de checkout, produtos e pagamentos com Redis dedicado para alta conversão.",
       includes: "Redis dedicado, Traefik SSL e Wizard de primeiro acesso",
+      requires_postgres: true,
       favorite: true,
     },
   };
@@ -451,10 +455,27 @@
             <p>Nenhum aplicativo encontrado para a busca "${escapeHtml(state.searchQuery)}".</p>
           </div>
         ` : filteredApps.map(a => {
-          const meta = APP_METAS[a.id] || {
+          const meta = { ...(APP_METAS[a.id] || {
             icon: "📦", name: a.name, tag: "App", ram: "1 GB RAM",
             desc: a.description, includes: "Roteador Traefik e rede isolada",
-          };
+          }) };
+
+          // Personalização inteligente do texto "Instala junto"
+          const pgs = state.postgresInstances || [];
+          if (a.id === "evolution") {
+            if (pgs.length > 0) {
+              meta.includes = `Conecta no seu ${pgs[0].label} ativo, SSL grátis e Rotas Traefik`;
+            } else {
+              meta.includes = "Cria banco PostgreSQL automático (se desejar) e SSL grátis";
+            }
+          } else if (a.id === "getfy") {
+            if (pgs.length > 0) {
+              meta.includes = `Conecta no seu ${pgs[0].label} ativo, Redis dedicado e Traefik SSL`;
+            } else {
+              meta.includes = "Cria banco PostgreSQL automático (se desejar), Redis dedicado e Traefik SSL";
+            }
+          }
+
           const count = a.instance_count || 0;
           const hasInst = count > 0;
 
@@ -985,6 +1006,64 @@
     `;
   }
 
+  // Seletor inteligente de PostgreSQL
+  function renderDatabaseSection(a) {
+    const pgs = state.postgresInstances || [];
+    if (pgs.length > 0) {
+      return `
+        <div class="db-select-card">
+          <div class="db-select-badge-row">
+            <span class="db-badge">BANCO DE DADOS</span>
+            <span class="db-status-pill online">● ${pgs.length} PostgreSQL Ativo(s)</span>
+          </div>
+          <h4>Conexão com PostgreSQL</h4>
+          <p class="db-desc">
+            Detectamos que você já possui <strong>${pgs.length} banco(s) PostgreSQL</strong> ativo(s) nesta VPS:
+          </p>
+
+          <div class="form-group">
+            <label>Em qual banco conectar esta aplicação?</label>
+            <select id="app-db-instance" class="form-select">
+              ${pgs.map((pg, idx) => `
+                <option value="${escapeHtml(pg.instance_id)}" ${idx === 0 ? "selected" : ""}>
+                  🐘 ${escapeHtml(pg.label)} — (Host interno: ${escapeHtml(pg.host)})
+                </option>
+              `).join("")}
+              <option value="__new__">+ Criar uma NOVA instância de PostgreSQL dedicada</option>
+              ${a.id === "evolution" ? '<option value="__none__">⚠️ Não usar PostgreSQL (Modo local sem banco)</option>' : ''}
+            </select>
+            <span class="field-hint">
+              ${pgs.length > 1
+                ? "💡 Você pode escolher o banco que preferir (ex: pg1 ou pg2) para separar seus dados."
+                : "💡 A ferramenta conectará neste banco existente. Nenhum container duplicado será criado!"}
+            </span>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="db-notice-card">
+          <div class="db-notice-head">
+            <span class="db-warn-icon">ℹ️</span>
+            <div>
+              <h4>Banco PostgreSQL Necessário</h4>
+              <p>Esta ferramenta precisa de um banco de dados PostgreSQL para salvar mensagens e dados. Nenhum PostgreSQL foi encontrado nesta VPS.</p>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem;">
+            <label>Como deseja configurar o PostgreSQL?</label>
+            <select id="app-db-instance" class="form-select">
+              <option value="__auto_create__" selected>🚀 Instalar PostgreSQL automaticamente agora (Recomendado)</option>
+              ${a.id === "evolution" ? '<option value="__none__">Continuar sem banco (Modo temporário em memória)</option>' : ''}
+            </select>
+            <span class="field-hint">O SetupImpa criará o PostgreSQL #1 no Swarm antes de inicializar ${escapeHtml(a.name)}.</span>
+          </div>
+        </div>
+      `;
+    }
+  }
+
   // Modal 2: Instalação de App (Hosteg Clean)
   function renderAppModal() {
     const a = state.currentApp;
@@ -992,6 +1071,10 @@
     const meta = APP_METAS[a.id] || { icon: "📦", name: a.name };
     const count = a.instance_count || 0;
     const ip = state.status?.public_ip || "74.1.21.235";
+    const needsPg = a.id === "evolution" || a.id === "getfy" || meta.requires_postgres;
+
+    // Filtra campos internos de db para não poluir
+    const visibleFields = (a.fields || []).filter(f => !["db_instance", "db_host", "db_name", "db_user", "db_pass"].includes(f.key));
 
     return `
       <div class="modal-backdrop">
@@ -1007,11 +1090,13 @@
               </div>
             ` : ""}
 
+            ${needsPg ? renderDatabaseSection(a) : ""}
+
             <p class="modal-intro">
               Informe o endereço (subdomínio) que você deseja usar para acessar esta ferramenta:
             </p>
 
-            ${(a.fields || []).map(f => `
+            ${visibleFields.map(f => `
               <div class="form-group">
                 <label>${escapeHtml(f.label)}</label>
                 <input data-field-key="${f.key}" type="text"
@@ -1267,6 +1352,10 @@
 
       const domain = state.appForm.domain;
       const autoCf = document.getElementById("cf-auto-create")?.checked;
+      const chosenDb = document.getElementById("app-db-instance")?.value || "";
+      state.appForm.db_instance = chosenDb;
+
+      const needsCreatePg = (chosenDb === "__auto_create__" || chosenDb === "__new__");
 
       // Abre imediatamente o Stepper de Progresso Visual!
       state.activeModal = "progress";
@@ -1274,12 +1363,14 @@
         active: true,
         title: `Instalando ${a.name}...`,
         subtitle: `Configurando sua nova instância com isolamento e segurança`,
-        percent: 20,
+        percent: 15,
         done: false,
         error: null,
         steps: [
-          { label: "Validando parâmetros e criando volumes", status: "active", detail: "Isolamento de dados" },
-          { label: "Configurando rota segura e SSL no Traefik", status: "pending" },
+          needsCreatePg
+            ? { label: "Provisionando banco de dados PostgreSQL no Swarm", status: "active", detail: "Subindo container postgres..." }
+            : { label: `Conectando ao banco ${chosenDb === "__none__" ? "Modo Local" : (chosenDb || "PostgreSQL")}`, status: "active", detail: chosenDb === "__none__" ? "Sem banco externo" : "Reutilizando banco existente" },
+          { label: "Validando rota segura e SSL no Traefik v3", status: "pending" },
           { label: "Inicializando container no cluster Docker", status: "pending" },
           { label: "Verificando saúde da aplicação", status: "pending" },
         ],
@@ -1287,26 +1378,40 @@
       render();
 
       try {
+        if (needsCreatePg) {
+          const pgJob = await api("/api/install/postgres", { method: "POST", body: JSON.stringify({ params: {} }) });
+          await pollJobSilent(pgJob.job_id);
+          state.appForm.db_instance = pgJob.instance_id || "postgres";
+          state.progress.steps[0].status = "done";
+          state.progress.steps[0].detail = `Banco ${state.appForm.db_instance} pronto`;
+          state.progress.percent = 35;
+          render();
+        } else {
+          state.progress.steps[0].status = "done";
+          state.progress.percent = 30;
+          render();
+        }
+
         if (autoCf && domain && state.cfConfigured) {
-          state.progress.steps[0].detail = `Criando apontamento DNS para ${domain}...`;
+          state.progress.steps[1].detail = `Criando apontamento DNS para ${domain}...`;
           render();
           try {
             await api("/api/cloudflare/dns", { method: "POST", body: JSON.stringify({ domain }) });
           } catch (_) {}
         }
 
-        state.progress.percent = 40;
-        state.progress.steps[0].status = "done";
-        state.progress.steps[1].status = "active";
-        state.progress.steps[1].detail = domain ? `Configurando rota https://${domain}` : "Rede interna privada";
+        state.progress.percent = 50;
+        state.progress.steps[1].status = "done";
+        state.progress.steps[2].status = "active";
+        state.progress.steps[2].detail = domain ? `Configurando rota https://${domain}` : "Rede interna privada";
         render();
 
         const job = await api(`/api/install/${a.id}`, { method: "POST", body: JSON.stringify({ params: state.appForm }) });
 
-        state.progress.percent = 60;
-        state.progress.steps[1].status = "done";
-        state.progress.steps[2].status = "active";
-        state.progress.steps[2].detail = `Subindo stack ${job.instance_id}...`;
+        state.progress.percent = 70;
+        state.progress.steps[2].status = "done";
+        state.progress.steps[3].status = "active";
+        state.progress.steps[3].detail = `Subindo stack ${job.instance_id}...`;
         render();
 
         await pollJobProgress(job.job_id, a, job.instance_id, domain);
@@ -1317,8 +1422,20 @@
     }
   });
 
+  async function pollJobSilent(jobId) {
+    for (let i = 0; i < 40; i++) {
+      const job = await api(`/api/install/${jobId}`);
+      if (job.status === "done") return job.result;
+      if (job.status === "error") {
+        throw new Error("Falha ao provisionar PostgreSQL: " + JSON.stringify(job.result || ""));
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    throw new Error("Tempo limite excedido aguardando o PostgreSQL inicializar.");
+  }
+
   async function pollJobProgress(jobId, appMeta, instanceId, domain) {
-    let pcts = [65, 70, 75, 80, 85, 90];
+    let pcts = [75, 80, 85, 90, 95];
     let idx = 0;
 
     for (let i = 0; i < 60; i++) {

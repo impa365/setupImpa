@@ -290,6 +290,7 @@ def cf_find_zone(body: DnsBody, _: dict = Depends(require_auth)):
 @app.get("/api/apps")
 def list_apps(_: dict = Depends(require_auth)):
     base_ok = checks.stack_exists("traefik") and checks.stack_exists("portainer")
+    pg_instances = postgres.get_available_instances()
     items = []
     for app_id, mod in APPS.items():
         m = mod.meta()
@@ -313,7 +314,11 @@ def list_apps(_: dict = Depends(require_auth)):
         "blocked": False,
         "fields": [],
     })
-    return {"apps": items, "base_installed": base_ok}
+    return {
+        "apps": items,
+        "base_installed": base_ok,
+        "postgres_instances": pg_instances,
+    }
 
 
 # ── Install app (creates new instance) ─────────────────────────────
