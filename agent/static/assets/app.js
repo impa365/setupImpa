@@ -245,7 +245,7 @@
   // ── Metadados dos Apps (Estilo Hosteg) ──────────────────────────
   const APP_METAS = {
     base: {
-      icon: "⚙️",
+      icon: '<img src="/assets/traefik.svg" class="app-icon-img" alt="Traefik" />',
       name: "Infraestrutura Base",
       tag: "Obrigatório",
       ram: "512 MB RAM",
@@ -255,7 +255,7 @@
       favorite: false,
     },
     evolution: {
-      icon: "💬",
+      icon: '<img src="/assets/evolution.png" class="app-icon-img" alt="Evolution API" />',
       name: "Evolution API v2",
       tag: "WhatsApp Oficial",
       ram: "1 GB RAM",
@@ -266,7 +266,7 @@
       favorite: true,
     },
     hermes: {
-      icon: "🤖",
+      icon: '<img src="/assets/hermes-dark.svg" class="app-icon-img" alt="Hermes Agente IA" />',
       name: "Hermes Agente IA",
       tag: "Inteligência Artificial",
       ram: "2 GB RAM",
@@ -276,7 +276,7 @@
       favorite: true,
     },
     postgres: {
-      icon: "🐘",
+      icon: '<img src="/assets/postgres.svg" class="app-icon-img" alt="PostgreSQL" />',
       name: "PostgreSQL 16",
       tag: "Banco de Dados",
       ram: "512 MB RAM",
@@ -286,7 +286,7 @@
       favorite: true,
     },
     getfy: {
-      icon: "💳",
+      icon: '<img src="/assets/getfy.png" class="app-icon-img" alt="Getfy Checkout" />',
       name: "Getfy Checkout",
       tag: "Checkout & Vendas",
       ram: "1 GB RAM",
@@ -343,13 +343,13 @@
             </button>
 
             <button class="menu-item ${state.activeTab === "cloudflare" ? "active" : ""}" data-tab="cloudflare">
-              <span class="menu-icon">☁️</span>
+              <span class="menu-icon"><img src="/assets/cloudflare.svg" class="menu-svg-icon" alt="Cloudflare" /></span>
               <span class="menu-label">Cloudflare DNS</span>
               ${state.cfConfigured ? '<span class="menu-pill green">Ativo</span>' : ""}
             </button>
 
             <button class="menu-item ${state.activeTab === "base" ? "active" : ""}" data-tab="base">
-              <span class="menu-icon">⚙️</span>
+              <span class="menu-icon"><img src="/assets/traefik.svg" class="menu-svg-icon" alt="Base" /></span>
               <span class="menu-label">Base do Servidor</span>
               ${baseInstalled ? '<span class="menu-pill green">Pronto</span>' : '<span class="menu-pill yellow">Configurar</span>'}
             </button>
@@ -565,7 +565,10 @@
               ${activeInstances.map(inst => `
                 <tr>
                   <td>
-                    <strong>${escapeHtml(inst.app_name)}</strong>
+                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                      <span class="inst-avatar-mini">${APP_METAS[inst.app_id]?.icon || '📦'}</span>
+                      <strong>${escapeHtml(inst.app_name)}</strong>
+                    </div>
                   </td>
                   <td>
                     <span class="inst-num-chip">#${inst.instance_num || 1} ${escapeHtml(inst.instance_id)}</span>
@@ -689,7 +692,7 @@
           <div class="portainer-tech-header">
             <div class="portainer-badge-row">
               <span class="tech-badge">PAINEL TÉCNICO & GERENCIADOR</span>
-              <span class="portainer-tag-pill">🐳 Portainer CE</span>
+              <span class="portainer-tag-pill"><img src="/assets/portainer.svg" class="chip-svg-inline" alt="Portainer" /> Portainer CE</span>
             </div>
             <h3>Acesso Administrativo ao Portainer</h3>
             <p class="portainer-tech-desc">
@@ -1080,7 +1083,7 @@
       <div class="modal-backdrop">
         <div class="modal-box">
           <div class="modal-head">
-            <h3>${meta.icon} Quero Instalar: ${escapeHtml(meta.name)}</h3>
+            <h3>${meta.icon} <span>Quero Instalar: ${escapeHtml(meta.name)}</span></h3>
             <button class="modal-close" onclick="window.__closeModal()">×</button>
           </div>
           <div class="modal-body">
