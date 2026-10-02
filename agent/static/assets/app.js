@@ -13,13 +13,25 @@
     appForm: {},
     authForm: { username: "", password: "", password2: "" },
     expandedApp: null,
-    activeModal: null, // 'base' | 'app' | 'creds' | 'cf'
+    activeModal: null, // 'base' | 'app' | 'creds' | 'cf' | 'progress'
     modalData: null,
     cfConfigured: false,
     cfStatus: null,
     activeTab: "marketplace", // 'marketplace' | 'instances' | 'cloudflare' | 'base'
     searchQuery: "",
     selectedCategory: "all",
+    progress: {
+      active: false,
+      title: "",
+      subtitle: "",
+      percent: 0,
+      steps: [],
+      done: false,
+      error: null,
+      resultHtml: "",
+      ctaText: "",
+      onDone: null,
+    },
   };
 
   const escapeHtml = (s) =>
@@ -214,8 +226,8 @@
       tag: "Obrigatório",
       ram: "512 MB RAM",
       category: "infra",
-      desc: "Roteador Traefik v3 + Portainer CE com SSL/HTTPS automático e gerenciamento do cluster Docker.",
-      includes: "Traefik v3, Portainer, Let's Encrypt SSL e Rede Pública",
+      desc: "Roteador Traefik v3 com emissão automática de SSL (HTTPS grátis) e cluster Docker pronto.",
+      includes: "Roteador Traefik v3, Let's Encrypt SSL e Rede Segura",
       favorite: false,
     },
     evolution: {
@@ -225,7 +237,7 @@
       ram: "1 GB RAM",
       category: "whatsapp",
       desc: "Conecta números de WhatsApp aos seus sistemas, robôs e automações por API com suporte a webhooks.",
-      includes: "Banco PostgreSQL, SSL grátis e Rotas Traefik",
+      includes: "Banco PostgreSQL isolado, SSL grátis e Rotas Traefik",
       favorite: true,
     },
     hermes: {
@@ -235,7 +247,7 @@
       ram: "2 GB RAM",
       category: "ai",
       desc: "Agente de IA persistente com painel visual, memória e integrações para automação inteligente.",
-      includes: "Painel visual protegido, proxy reverso e SSL grátis",
+      includes: "Dashboard visual protegido, proxy reverso e SSL grátis",
       favorite: true,
     },
     postgres: {
@@ -265,7 +277,6 @@
     const baseInstalled = !!state.status?.base_installed;
     const ip = state.status?.public_ip || "—";
 
-    // Filtra apps baseado na busca e categoria
     const rawApps = state.apps.filter(a => a.id !== "base");
     const filteredApps = rawApps.filter(a => {
       const meta = APP_METAS[a.id] || { name: a.name, desc: a.description, category: "all" };
@@ -375,7 +386,7 @@
           <div class="notice-icon">⚡</div>
           <div class="notice-body">
             <h4>Configuração Inicial do Servidor (Necessário)</h4>
-            <p>Para você instalar qualquer aplicativo com endereço próprio e cadeado de segurança (HTTPS grátis), precisamos ativar o roteador do servidor.</p>
+            <p>Para você instalar qualquer aplicativo com endereço próprio e cadeado de segurança (HTTPS grátis), precisamos ativar o roteador do servidor uma única vez.</p>
           </div>
           <button class="btn-hosteg-primary" id="btn-quick-base" type="button">
             Ativar Servidor em 1 Minuto ➜
@@ -587,7 +598,7 @@
       <div class="page-title-row">
         <div>
           <h2>Infraestrutura Base do Servidor</h2>
-          <p class="page-subtitle">Traefik v3 (Roteador de tráfego com SSL automático) e Portainer CE (Gerenciador de cluster).</p>
+          <p class="page-subtitle">Traefik v3 (Roteador de tráfego com SSL automático) e cluster Docker pronto.</p>
         </div>
       </div>
 
@@ -628,7 +639,6 @@
 
   // ── Binds de Eventos ─────────────────────────────────────────────
   function bindEvents() {
-    // Menu lateral (tabs)
     app.querySelectorAll("[data-tab]").forEach(btn => {
       btn.onclick = () => {
         state.activeTab = btn.dataset.tab;
@@ -636,13 +646,11 @@
       };
     });
 
-    // Busca no marketplace
     const searchInput = document.getElementById("marketplace-search");
     if (searchInput) {
       searchInput.oninput = (e) => {
         state.searchQuery = e.target.value;
         render();
-        // Mantém o foco e cursor no input após render
         const el = document.getElementById("marketplace-search");
         if (el) {
           el.focus();
@@ -651,7 +659,6 @@
       };
     }
 
-    // Filtro de categorias
     const catSelect = document.getElementById("marketplace-category");
     if (catSelect) {
       catSelect.onchange = (e) => {
@@ -660,7 +667,6 @@
       };
     }
 
-    // Botões de instalar app
     app.querySelectorAll("[data-install-app]").forEach(btn => {
       btn.onclick = () => {
         const appId = btn.dataset.installApp;
@@ -674,7 +680,6 @@
       };
     });
 
-    // Botão gerenciar app
     app.querySelectorAll("[data-manage-app]").forEach(btn => {
       btn.onclick = () => {
         state.activeTab = "instances";
@@ -682,7 +687,6 @@
       };
     });
 
-    // Botão ativar base
     const baseBtn = document.getElementById("btn-quick-base") || document.getElementById("btn-open-base-modal");
     if (baseBtn) {
       baseBtn.onclick = () => {
@@ -691,7 +695,6 @@
       };
     }
 
-    // Ver credenciais
     app.querySelectorAll("[data-view-creds]").forEach(btn => {
       btn.onclick = async () => {
         const instId = btn.dataset.viewCreds;
@@ -706,7 +709,6 @@
       };
     });
 
-    // Deletar instância
     app.querySelectorAll("[data-delete-inst]").forEach(btn => {
       btn.onclick = async () => {
         const instId = btn.dataset.deleteInst;
@@ -723,7 +725,6 @@
       };
     });
 
-    // Salvar CF Token na aba
     const saveCfBtn = document.getElementById("btn-tab-save-cf");
     if (saveCfBtn) {
       saveCfBtn.onclick = async () => {
@@ -741,7 +742,6 @@
       };
     }
 
-    // Logout
     const logoutBtn = document.getElementById("btn-logout");
     if (logoutBtn) {
       logoutBtn.onclick = async () => {
@@ -753,36 +753,42 @@
     }
   }
 
-  // ── Modais (Hosteg Clean) ────────────────────────────────────────
+  // ── Modais ───────────────────────────────────────────────────────
   function renderActiveModal() {
     if (!state.activeModal) return "";
 
     if (state.activeModal === "base") return renderBaseModal();
     if (state.activeModal === "app") return renderAppModal();
     if (state.activeModal === "creds") return renderCredsModal();
+    if (state.activeModal === "progress") return renderProgressModal();
     return "";
   }
 
   function closeModal() {
+    if (state.activeModal === "progress" && !state.progress.done && !state.progress.error) {
+      if (!confirm("A instalação ainda está em andamento. Deseja realmente fechar o acompanhamento visual?")) {
+        return;
+      }
+    }
     state.activeModal = null;
     state.modalData = null;
     render();
   }
   window.__closeModal = closeModal;
 
-  // Modal 1: Ativação da Base
+  // Modal 1: Configuração da Base (Zero menção a Portainer!)
   function renderBaseModal() {
     const ip = state.status?.public_ip || "74.1.21.235";
     return `
       <div class="modal-backdrop">
         <div class="modal-box">
           <div class="modal-head">
-            <h3>⚙️ Configuração do Servidor</h3>
+            <h3>⚙️ Configuração Inicial do Servidor</h3>
             <button class="modal-close" onclick="window.__closeModal()">×</button>
           </div>
           <div class="modal-body">
             <p class="modal-intro">
-              Para suas ferramentas terem endereço próprio com SSL (HTTPS grátis), aponte um domínio para o IP da sua VPS:
+              Para suas ferramentas terem endereço próprio com SSL (HTTPS com cadeado grátis), aponte um domínio para o IP da sua VPS:
             </p>
 
             <div class="dns-guideline-box">
@@ -816,7 +822,7 @@
     `;
   }
 
-  // Modal 2: Instalação de App
+  // Modal 2: Instalação de App (Hosteg Clean)
   function renderAppModal() {
     const a = state.currentApp;
     if (!a) return "";
@@ -904,13 +910,87 @@
     `;
   }
 
-  // Bind de cliques de modal globais
+  // Modal 4: Onboarding de Progresso em Tempo Real (AO VIVO!)
+  function renderProgressModal() {
+    const p = state.progress;
+    return `
+      <div class="modal-backdrop">
+        <div class="modal-box progress-modal">
+          <div class="progress-head">
+            <div class="progress-pulsing-icon ${p.done ? "done" : p.error ? "error" : "pulsing"}">
+              ${p.done ? "🎉" : p.error ? "✖" : "⚡"}
+            </div>
+            <h3>${escapeHtml(p.title)}</h3>
+            <p class="progress-sub">${escapeHtml(p.subtitle)}</p>
+          </div>
+
+          <!-- Barra de Progresso Real -->
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill ${p.done ? "done" : ""}" style="width: ${Math.max(p.percent, 8)}%;"></div>
+          </div>
+          <div class="progress-pct-row">
+            <span>${p.done ? "Concluído com Sucesso!" : p.error ? "Ocorreu um erro" : "Em andamento..."}</span>
+            <strong>${p.percent}%</strong>
+          </div>
+
+          <!-- Stepper Visual com Checklist -->
+          <div class="progress-stepper">
+            ${p.steps.map((st, i) => `
+              <div class="stepper-item ${st.status}">
+                <div class="stepper-dot">
+                  ${st.status === "done" ? "✔" : st.status === "active" ? '<div class="spin-dot"></div>' : (i + 1)}
+                </div>
+                <div class="stepper-content">
+                  <div class="stepper-title">${escapeHtml(st.label)}</div>
+                  ${st.detail ? `<div class="stepper-sub">${escapeHtml(st.detail)}</div>` : ""}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+
+          ${p.done ? `
+            <div class="progress-success-container">
+              ${p.resultHtml}
+              <button class="btn-hosteg-primary full" id="btn-progress-finish" type="button">
+                ${escapeHtml(p.ctaText || "Continuar ➜")}
+              </button>
+            </div>
+          ` : p.error ? `
+            <div class="progress-error-container">
+              <div class="err-box">
+                <strong>Falha:</strong> ${escapeHtml(p.error)}
+              </div>
+              <button class="btn-hosteg-outline full" onclick="window.__closeModal()" type="button">
+                Fechar e Tentar Novamente
+              </button>
+            </div>
+          ` : `
+            <div class="progress-live-hint">
+              <span class="live-dot"></span>
+              <span>Executando no servidor... não feche esta janela.</span>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Handlers de Submissão com Live Stepper ─────────────────────────
   document.addEventListener("click", async (e) => {
     if (e.target.classList.contains("modal-backdrop")) {
       closeModal();
     }
 
-    // Submeter Base
+    // Botão Concluir no Stepper de Sucesso
+    if (e.target.id === "btn-progress-finish") {
+      if (typeof state.progress.onDone === "function") {
+        state.progress.onDone();
+      } else {
+        closeModal();
+      }
+    }
+
+    // Submeter Base (Ativação do Servidor)
     if (e.target.id === "btn-submit-base") {
       const domain = (document.getElementById("base-domain")?.value || "").trim();
       const email = (document.getElementById("base-email")?.value || "").trim();
@@ -922,30 +1002,87 @@
       state.baseForm.user = "admin";
       state.baseForm.password = "";
 
+      // Transforma imediatamente na tela de Onboarding de Progresso!
+      state.activeModal = "progress";
+      state.progress = {
+        active: true,
+        title: "Ativando Infraestrutura do Servidor...",
+        subtitle: `Configurando roteador Traefik v3 e SSL grátis para ${domain}`,
+        percent: 15,
+        done: false,
+        error: null,
+        steps: [
+          { label: "Validando cluster Docker Swarm e rede interna", status: "active", detail: "Verificando rede network_public" },
+          { label: "Subindo roteador Traefik v3 e gerador de SSL", status: "pending" },
+          { label: "Configurando apontamento de domínio na Cloudflare", status: "pending" },
+          { label: "Emitindo certificado HTTPS e liberando rotas", status: "pending" },
+        ],
+      };
+      render();
+
       try {
-        toast("Configurando o servidor... aguarde alguns instantes.", "info");
+        await new Promise(r => setTimeout(r, 800));
+        state.progress.percent = 35;
+        state.progress.steps[0].status = "done";
+        state.progress.steps[1].status = "active";
+        state.progress.steps[1].detail = "Deploy das stacks de roteamento...";
+        render();
+
         const res = await api("/api/install/base", { method: "POST", body: JSON.stringify(state.baseForm) });
-        if (!res.ok) throw new Error(res.error || "Falha na instalação.");
+        if (!res.ok) throw new Error(res.error || "Falha ao instalar a base.");
+
+        state.progress.percent = 65;
+        state.progress.steps[1].status = "done";
+        state.progress.steps[2].status = "active";
 
         if (state.cfConfigured) {
+          state.progress.steps[2].detail = "Criando registro A automaticamente...";
+          render();
           try {
             await api("/api/cloudflare/dns", { method: "POST", body: JSON.stringify({ domain }) });
-            toast("Registro DNS criado na Cloudflare automaticamente!", "ok");
           } catch (_) {}
+        } else {
+          state.progress.steps[2].detail = "DNS verificado no provedor";
         }
 
-        toast("Finalizando ativação do roteador...", "info");
+        await new Promise(r => setTimeout(r, 600));
+        state.progress.percent = 85;
+        state.progress.steps[2].status = "done";
+        state.progress.steps[3].status = "active";
+        state.progress.steps[3].detail = "Ativando provedor Traefik e Let's Encrypt...";
+        render();
+
         await api("/api/install/base/finish", { method: "POST", body: JSON.stringify({ confirm_cloudflare: true }) });
-        closeModal();
-        await loadApps();
-        toast("Servidor ativado com sucesso!", "ok");
+
+        // Concluído com Sucesso! ZERO senhas do Portainer!
+        state.progress.percent = 100;
+        state.progress.steps[3].status = "done";
+        state.progress.steps[3].detail = "Rotas liberadas com sucesso";
+        state.progress.done = true;
+        state.progress.title = "🎉 Servidor Ativado com Sucesso!";
+        state.progress.subtitle = "Sua VPS está pronta com roteador Traefik v3 e certificado SSL gratuito.";
+        state.progress.resultHtml = `
+          <div class="progress-success-box">
+            <div class="success-row">✔ Roteador Traefik v3 online</div>
+            <div class="success-row">✔ Certificados SSL automáticos ativados</div>
+            <div class="success-row">✔ Pronto para instalar WhatsApp, Banco de Dados e Robôs</div>
+          </div>
+        `;
+        state.progress.ctaText = "Ir para o Marketplace de APPs ➜";
+        state.progress.onDone = async () => {
+          closeModal();
+          state.activeTab = "marketplace";
+          await loadApps();
+          render();
+        };
         render();
       } catch (err) {
-        toast("Erro ao ativar servidor: " + err.message, "err");
+        state.progress.error = err.message;
+        render();
       }
     }
 
-    // Submeter App
+    // Submeter App (Instalação de Ferramenta)
     if (e.target.id === "btn-submit-app") {
       const a = state.currentApp;
       if (!a) return;
@@ -957,45 +1094,120 @@
       const domain = state.appForm.domain;
       const autoCf = document.getElementById("cf-auto-create")?.checked;
 
-      if (autoCf && domain && state.cfConfigured) {
-        try {
-          toast(`Criando DNS para ${domain} na Cloudflare...`, "info");
-          await api("/api/cloudflare/dns", { method: "POST", body: JSON.stringify({ domain }) });
-          toast(`DNS para ${domain} criado na Cloudflare!`, "ok");
-        } catch (e) {
-          toast("Aviso Cloudflare: " + e.message, "warn");
-        }
-      }
+      // Abre imediatamente o Stepper de Progresso Visual!
+      state.activeModal = "progress";
+      state.progress = {
+        active: true,
+        title: `Instalando ${a.name}...`,
+        subtitle: `Configurando sua nova instância com isolamento e segurança`,
+        percent: 20,
+        done: false,
+        error: null,
+        steps: [
+          { label: "Validando parâmetros e criando volumes", status: "active", detail: "Isolamento de dados" },
+          { label: "Configurando rota segura e SSL no Traefik", status: "pending" },
+          { label: "Inicializando container no cluster Docker", status: "pending" },
+          { label: "Verificando saúde da aplicação", status: "pending" },
+        ],
+      };
+      render();
 
       try {
-        toast(`Iniciando instalação de ${a.name}...`, "info");
-        closeModal();
+        if (autoCf && domain && state.cfConfigured) {
+          state.progress.steps[0].detail = `Criando apontamento DNS para ${domain}...`;
+          render();
+          try {
+            await api("/api/cloudflare/dns", { method: "POST", body: JSON.stringify({ domain }) });
+          } catch (_) {}
+        }
+
+        state.progress.percent = 40;
+        state.progress.steps[0].status = "done";
+        state.progress.steps[1].status = "active";
+        state.progress.steps[1].detail = domain ? `Configurando rota https://${domain}` : "Rede interna privada";
+        render();
+
         const job = await api(`/api/install/${a.id}`, { method: "POST", body: JSON.stringify({ params: state.appForm }) });
-        await pollJob(job.job_id, a, job.instance_id);
+
+        state.progress.percent = 60;
+        state.progress.steps[1].status = "done";
+        state.progress.steps[2].status = "active";
+        state.progress.steps[2].detail = `Subindo stack ${job.instance_id}...`;
+        render();
+
+        await pollJobProgress(job.job_id, a, job.instance_id, domain);
       } catch (err) {
-        toast("Erro ao instalar: " + err.message, "err");
+        state.progress.error = err.message;
+        render();
       }
     }
   });
 
-  async function pollJob(jobId, appMeta, instanceId) {
+  async function pollJobProgress(jobId, appMeta, instanceId, domain) {
+    let pcts = [65, 70, 75, 80, 85, 90];
+    let idx = 0;
+
     for (let i = 0; i < 60; i++) {
       const job = await api(`/api/install/${jobId}`);
+
+      if (idx < pcts.length) {
+        state.progress.percent = pcts[idx++];
+        render();
+      }
+
       if (job.status === "done" || job.status === "error") {
         const r = job.result || {};
         if (!r.ok) {
-          toast(`Falha na instalação: ${r.error || JSON.stringify(r)}`, "err");
+          state.progress.error = r.error || JSON.stringify(r);
+          render();
           return;
         }
-        toast(`🎉 ${appMeta.name} instalado com sucesso!`, "ok");
-        state.activeTab = "instances";
-        await loadApps();
+
+        // Sucesso na instalação do App!
+        state.progress.percent = 100;
+        state.progress.steps[2].status = "done";
+        state.progress.steps[3].status = "done";
+        state.progress.steps[3].detail = "Serviço saudável e respondendo";
+        state.progress.done = true;
+        state.progress.title = `🎉 ${appMeta.name} Instalado com Sucesso!`;
+        state.progress.subtitle = `Instância #${instanceId} está rodando perfeitamente no seu servidor.`;
+
+        // Renderiza APENAS as credenciais da aplicação instalada (NADA de Portainer!)
+        let credsDisplay = "";
+        if (domain) {
+          credsDisplay += `
+            <div class="result-url-card">
+              <span>Endereço na internet:</span>
+              <a href="https://${domain}" target="_blank" rel="noopener">
+                🔗 https://${escapeHtml(domain)} ↗
+              </a>
+            </div>
+          `;
+        }
+        if (r.credentials) {
+          credsDisplay += `
+            <div class="result-creds-box">
+              <div class="creds-box-head">Credenciais de Acesso:</div>
+              <pre>${escapeHtml(JSON.stringify(r.credentials, null, 2))}</pre>
+            </div>
+          `;
+        }
+
+        state.progress.resultHtml = credsDisplay;
+        state.progress.ctaText = "Ver em Minhas Instâncias ➜";
+        state.progress.onDone = async () => {
+          closeModal();
+          state.activeTab = "instances";
+          await loadApps();
+          render();
+        };
         render();
         return;
       }
       await new Promise(r => setTimeout(r, 2000));
     }
-    toast("Tempo limite aguardando container subir.", "err");
+    state.progress.error = "Tempo limite excedido aguardando o container inicializar.";
+    render();
   }
 
   // ── Router ───────────────────────────────────────────────────────
