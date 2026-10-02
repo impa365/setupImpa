@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from installer import auth, base, checks, cloudflare, orion_engine, portainer_client, registry, validate
 from installer.apps import evolution, getfy, hermes, ninerouter, omniroute, postgres
+from mcp import mcp_router
 
 VERSION = os.environ.get("SETUPIMPA_VERSION", "0.3.0")
 STATIC = Path(__file__).resolve().parent / "static"
@@ -36,6 +37,7 @@ logging.basicConfig(
 log = logging.getLogger("setupimpa")
 
 app = FastAPI(title="SetupImpa", version=VERSION)
+app.include_router(mcp_router)
 JOBS: dict[str, dict[str, Any]] = {}
 APPS = {
     "postgres": postgres,

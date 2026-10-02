@@ -21,7 +21,11 @@
     dialog: null, // { title, message, icon, confirmText, cancelText, danger, onConfirm }
     cfConfigured: false,
     cfStatus: null,
-    activeTab: "marketplace", // 'marketplace' | 'instances' | 'cloudflare' | 'base'
+    activeTab: "marketplace", // 'marketplace' | 'instances' | 'cloudflare' | 'base' | 'mcp'
+    mcpConfig: null,
+    mcpActiveSnippetTab: "cursor",
+    mcpTesting: false,
+    mcpTestResult: null,
     searchQuery: "",
     selectedCategory: "all",
     progress: {
@@ -242,6 +246,16 @@
     } catch (_) {}
   }
 
+  async function loadMcpConfig() {
+    try {
+      const res = await api("/api/mcp/config");
+      state.mcpConfig = res;
+      render();
+    } catch (e) {
+      toast("Falha ao carregar configuração MCP: " + e.message, "err");
+    }
+  }
+
   // ── Metadados dos Apps (Estilo Hosteg) ──────────────────────────
   const APP_METAS = {
     base: {
@@ -338,128 +352,129 @@
 
   const APP_SPECIFIC_META = {
     // Comunicação / WhatsApp
-    evolution_v1: { tag: "WhatsApp API", icon: "🚀", ram: "1 GB RAM" },
-    evolution_v2: { tag: "WhatsApp API", icon: "🚀", ram: "1 GB RAM" },
-    evolution_lite: { tag: "WhatsApp API", icon: "⚡", ram: "1 GB RAM" },
-    evolution_go: { tag: "WhatsApp API", icon: "💨", ram: "1 GB RAM" },
-    wppconnect: { tag: "WhatsApp API", icon: "📱", ram: "1 GB RAM" },
-    wuzapi: { tag: "WhatsApp API", icon: "💬", ram: "1 GB RAM" },
-    quepasa: { tag: "WhatsApp API", icon: "📲", ram: "1 GB RAM" },
-    unoapi: { tag: "WhatsApp API", icon: "💬", ram: "1 GB RAM" },
-    woofed: { tag: "WhatsApp API", icon: "🐶", ram: "1 GB RAM" },
-    chatwoot: { tag: "Atendimento Omnichannel", icon: "💬", ram: "1 GB RAM" },
-    chatwoot_nestor: { tag: "Atendimento Omnichannel", icon: "💬", ram: "1 GB RAM" },
-    typebot: { tag: "Chatbot Visual & Funis", icon: "🤖", ram: "1 GB RAM" },
-    jitsi: { tag: "Videoconferência", icon: "🎥", ram: "2 GB RAM" },
-    mattermost: { tag: "Chat de Equipe", icon: "👥", ram: "1 GB RAM" },
-    humhub: { tag: "Rede Social Corporativa", icon: "🌐", ram: "1 GB RAM" },
+    evolution: { tag: "WhatsApp API", icon: '<img src="/assets/evolution.png" class="app-icon-img" alt="Evolution API" />', ram: "1 GB RAM" },
+    evolution_v1: { tag: "WhatsApp API", icon: '<img src="/assets/evolution.png" class="app-icon-img" alt="Evolution API" />', ram: "1 GB RAM" },
+    evolution_v2: { tag: "WhatsApp API", icon: '<img src="/assets/evolution.png" class="app-icon-img" alt="Evolution API" />', ram: "1 GB RAM" },
+    evolution_lite: { tag: "WhatsApp API", icon: '<img src="/assets/evolution.png" class="app-icon-img" alt="Evolution API" />', ram: "1 GB RAM" },
+    evolution_go: { tag: "WhatsApp API", icon: '<img src="/assets/evolution.png" class="app-icon-img" alt="Evolution API" />', ram: "1 GB RAM" },
+    wppconnect: { tag: "WhatsApp API", icon: '<img src="/assets/logos/whatsapp.svg" class="app-icon-img" alt="WPPConnect" />', ram: "1 GB RAM" },
+    wuzapi: { tag: "WhatsApp API", icon: '<img src="/assets/logos/whatsapp.svg" class="app-icon-img" alt="WuzAPI" />', ram: "1 GB RAM" },
+    quepasa: { tag: "WhatsApp API", icon: '<img src="/assets/logos/whatsapp.svg" class="app-icon-img" alt="Quepasa" />', ram: "1 GB RAM" },
+    unoapi: { tag: "WhatsApp API", icon: '<img src="/assets/logos/whatsapp.svg" class="app-icon-img" alt="UnoAPI" />', ram: "1 GB RAM" },
+    woofed: { tag: "WhatsApp API", icon: '<img src="/assets/logos/whatsapp.svg" class="app-icon-img" alt="Woofed" />', ram: "1 GB RAM" },
+    chatwoot: { tag: "Atendimento Omnichannel", icon: '<img src="/assets/logos/chatwoot.svg" class="app-icon-img" alt="Chatwoot" />', ram: "1 GB RAM" },
+    chatwoot_nestor: { tag: "Atendimento Omnichannel", icon: '<img src="/assets/logos/chatwoot_nestor.svg" class="app-icon-img" alt="Chatwoot Nestor" />', ram: "1 GB RAM" },
+    typebot: { tag: "Chatbot Visual & Funis", icon: '<img src="/assets/logos/typebot.svg" class="app-icon-img" alt="Typebot" />', ram: "1 GB RAM" },
+    jitsi: { tag: "Videoconferência", icon: '<img src="/assets/logos/jitsi.svg" class="app-icon-img" alt="Jitsi" />', ram: "2 GB RAM" },
+    mattermost: { tag: "Chat de Equipe", icon: '<img src="/assets/logos/mattermost.svg" class="app-icon-img" alt="Mattermost" />', ram: "1 GB RAM" },
+    humhub: { tag: "Rede Social Corporativa", icon: '<img src="/assets/logos/humhub.svg" class="app-icon-img" alt="HumHub" />', ram: "1 GB RAM" },
 
     // Automação
-    n8n: { tag: "Automação & Fluxos", icon: "⚡", ram: "1 GB RAM" },
-    n8n_quepasa: { tag: "Automação & WhatsApp", icon: "⚡", ram: "1 GB RAM" },
-    activepieces: { tag: "Automação & Workflows", icon: "🧩", ram: "1 GB RAM" },
+    n8n: { tag: "Automação & Fluxos", icon: '<img src="/assets/logos/n8n.svg" class="app-icon-img" alt="N8N" />', ram: "1 GB RAM" },
+    n8n_quepasa: { tag: "Automação & WhatsApp", icon: '<img src="/assets/logos/n8n.svg" class="app-icon-img" alt="N8N Quepasa" />', ram: "1 GB RAM" },
+    activepieces: { tag: "Automação & Workflows", icon: '<img src="/assets/logos/activepieces.svg" class="app-icon-img" alt="Activepieces" />', ram: "1 GB RAM" },
 
     // IA & LLMs
-    dify: { tag: "Agentes & IA", icon: "🧠", ram: "2 GB RAM" },
-    flowise: { tag: "Agentes & LangChain", icon: "🔗", ram: "1 GB RAM" },
-    openwebui: { tag: "Interface LLM / Chat", icon: "🤖", ram: "1 GB RAM" },
-    ollama: { tag: "LLMs & Modelos Locais", icon: "🦙", ram: "4 GB RAM" },
-    anythingllm: { tag: "IA & RAG Corporativo", icon: "💡", ram: "1 GB RAM" },
-    langflow: { tag: "Orquestração de IA", icon: "🌊", ram: "1 GB RAM" },
-    langfuse: { tag: "Observabilidade IA", icon: "🔭", ram: "1 GB RAM" },
-    botpress: { tag: "Chatbot com IA", icon: "🤖", ram: "1 GB RAM" },
-    evoai: { tag: "Inteligência Artificial", icon: "⚡", ram: "1 GB RAM" },
-    firecrawl: { tag: "Web Scraping para IA", icon: "🕷️", ram: "1 GB RAM" },
-    transcrevezap: { tag: "Transcrição com IA", icon: "🎙️", ram: "1 GB RAM" },
-    zep: { tag: "Memória para LLMs", icon: "💾", ram: "1 GB RAM" },
+    dify: { tag: "Agentes & IA", icon: '<img src="/assets/logos/dify.svg" class="app-icon-img" alt="Dify AI" />', ram: "2 GB RAM" },
+    flowise: { tag: "Agentes & LangChain", icon: '<img src="/assets/logos/flowise.svg" class="app-icon-img" alt="Flowise" />', ram: "1 GB RAM" },
+    openwebui: { tag: "Interface LLM / Chat", icon: '<img src="/assets/logos/openwebui.svg" class="app-icon-img" alt="Open WebUI" />', ram: "1 GB RAM" },
+    ollama: { tag: "LLMs & Modelos Locais", icon: '<img src="/assets/logos/ollama.svg" class="app-icon-img" alt="Ollama" />', ram: "4 GB RAM" },
+    anythingllm: { tag: "IA & RAG Corporativo", icon: '<img src="/assets/logos/openwebui.svg" class="app-icon-img" alt="AnythingLLM" />', ram: "1 GB RAM" },
+    langflow: { tag: "Orquestração de IA", icon: '<img src="/assets/logos/langflow.svg" class="app-icon-img" alt="Langflow" />', ram: "1 GB RAM" },
+    langfuse: { tag: "Observabilidade IA", icon: '<img src="/assets/logos/langfuse.svg" class="app-icon-img" alt="Langfuse" />', ram: "1 GB RAM" },
+    botpress: { tag: "Chatbot com IA", icon: '<img src="/assets/logos/botpress.svg" class="app-icon-img" alt="Botpress" />', ram: "1 GB RAM" },
+    evoai: { tag: "Inteligência Artificial", icon: '<img src="/assets/logos/dify.svg" class="app-icon-img" alt="Evo AI" />', ram: "1 GB RAM" },
+    firecrawl: { tag: "Web Scraping para IA", icon: '<img src="/assets/logos/firecrawl.svg" class="app-icon-img" alt="Firecrawl" />', ram: "1 GB RAM" },
+    transcrevezap: { tag: "Transcrição com IA", icon: '<img src="/assets/logos/whatsapp.svg" class="app-icon-img" alt="TranscreveZap" />', ram: "1 GB RAM" },
+    zep: { tag: "Memória para LLMs", icon: '<img src="/assets/logos/openwebui.svg" class="app-icon-img" alt="Zep" />', ram: "1 GB RAM" },
 
     // Banco de Dados & Storage
-    minio: { tag: "Storage S3", icon: "🪣", ram: "1 GB RAM" },
-    pgAdmin_4: { tag: "Gestão PostgreSQL", icon: "🐘", ram: "1 GB RAM" },
-    phpmyadmin: { tag: "Gestão MySQL", icon: "🐬", ram: "512 MB RAM" },
-    redisinsight: { tag: "Gestão Redis", icon: "🔴", ram: "512 MB RAM" },
-    mongodb: { tag: "Banco NoSQL", icon: "🍃", ram: "1 GB RAM" },
-    clickhouse: { tag: "Banco Analítico", icon: "⚡", ram: "2 GB RAM" },
-    pgbackweb: { tag: "Backups PostgreSQL", icon: "💾", ram: "512 MB RAM" },
+    minio: { tag: "Storage S3", icon: '<img src="/assets/logos/minio.svg" class="app-icon-img" alt="MinIO" />', ram: "1 GB RAM" },
+    pgAdmin_4: { tag: "Gestão PostgreSQL", icon: '<img src="/assets/logos/pgAdmin_4.svg" class="app-icon-img" alt="pgAdmin" />', ram: "1 GB RAM" },
+    phpmyadmin: { tag: "Gestão MySQL", icon: '<img src="/assets/logos/phpmyadmin.svg" class="app-icon-img" alt="phpMyAdmin" />', ram: "512 MB RAM" },
+    redisinsight: { tag: "Gestão Redis", icon: '<img src="/assets/logos/redisinsight.svg" class="app-icon-img" alt="RedisInsight" />', ram: "512 MB RAM" },
+    mongodb: { tag: "Banco NoSQL", icon: '<img src="/assets/logos/mongodb.svg" class="app-icon-img" alt="MongoDB" />', ram: "1 GB RAM" },
+    clickhouse: { tag: "Banco Analítico", icon: '<img src="/assets/logos/clickhouse.svg" class="app-icon-img" alt="ClickHouse" />', ram: "2 GB RAM" },
+    pgbackweb: { tag: "Backups PostgreSQL", icon: '<img src="/assets/logos/pgbackweb.svg" class="app-icon-img" alt="PgBackWeb" />', ram: "512 MB RAM" },
 
     // CRM, Produtividade & No-Code
-    baserow: { tag: "Banco de Dados No-Code", icon: "📊", ram: "1 GB RAM" },
-    nocodb: { tag: "Airtable No-Code", icon: "📋", ram: "1 GB RAM" },
-    nocobase: { tag: "Plataforma No-Code", icon: "🧱", ram: "1 GB RAM" },
-    twentycrm: { tag: "CRM & Vendas", icon: "💼", ram: "1.5 GB RAM" },
-    krayincrm: { tag: "CRM de Vendas", icon: "📈", ram: "1 GB RAM" },
-    evocrm: { tag: "CRM & Gestão", icon: "📊", ram: "1 GB RAM" },
-    calcom: { tag: "Agendamentos Online", icon: "📅", ram: "1 GB RAM" },
-    easyappointments: { tag: "Agendamentos Online", icon: "🗓️", ram: "512 MB RAM" },
-    nextcloud: { tag: "Arquivos & Nuvem", icon: "☁️", ram: "1 GB RAM" },
-    outline: { tag: "Wiki & Documentação", icon: "📝", ram: "1 GB RAM" },
-    wiki: { tag: "Wiki & Conhecimento", icon: "📖", ram: "1 GB RAM" },
-    docmost: { tag: "Wiki Colaborativa", icon: "📚", ram: "1 GB RAM" },
-    documenso: { tag: "Assinatura Digital", icon: "✍️", ram: "1 GB RAM" },
-    docuseal: { tag: "Assinatura de Documentos", icon: "🖋️", ram: "1 GB RAM" },
-    opensign: { tag: "Assinatura Digital", icon: "🔏", ram: "1 GB RAM" },
-    focalboard: { tag: "Kanban & Projetos", icon: "📋", ram: "512 MB RAM" },
-    planka: { tag: "Kanban & Tarefas", icon: "📌", ram: "512 MB RAM" },
-    wekan: { tag: "Quadro Kanban", icon: "🗂️", ram: "512 MB RAM" },
-    openproject: { tag: "Gestão de Projetos", icon: "🎯", ram: "1.5 GB RAM" },
-    affine: { tag: "Workspace Notion-like", icon: "✨", ram: "1 GB RAM" },
-    wordpress: { tag: "CMS & Sites", icon: "📰", ram: "1 GB RAM" },
-    bolt: { tag: "CMS Headless", icon: "⚡", ram: "512 MB RAM" },
-    frappe: { tag: "ERP & Gestão", icon: "🏢", ram: "2 GB RAM" },
-    odoo: { tag: "ERP Empresarial", icon: "🏬", ram: "2 GB RAM" },
-    metabase: { tag: "BI & Dashboards", icon: "📊", ram: "1.5 GB RAM" },
-    excalidraw: { tag: "Quadro Branco & Desenho", icon: "🎨", ram: "512 MB RAM" },
-    wisemapping: { tag: "Mapas Mentais", icon: "🗺️", ram: "512 MB RAM" },
-    checkmate: { tag: "Checklists & Tarefas", icon: "✅", ram: "512 MB RAM" },
-    papra: { tag: "Gestão de Arquivos", icon: "📁", ram: "512 MB RAM" },
+    baserow: { tag: "Banco de Dados No-Code", icon: '<img src="/assets/logos/baserow.svg" class="app-icon-img" alt="Baserow" />', ram: "1 GB RAM" },
+    nocodb: { tag: "Airtable No-Code", icon: '<img src="/assets/logos/nocodb.svg" class="app-icon-img" alt="NocoDB" />', ram: "1 GB RAM" },
+    nocobase: { tag: "Plataforma No-Code", icon: '<img src="/assets/logos/nocobase.svg" class="app-icon-img" alt="NocoBase" />', ram: "1 GB RAM" },
+    twentycrm: { tag: "CRM & Vendas", icon: '<img src="/assets/logos/twentycrm.svg" class="app-icon-img" alt="Twenty CRM" />', ram: "1.5 GB RAM" },
+    krayincrm: { tag: "CRM de Vendas", icon: '<img src="/assets/logos/twentycrm.svg" class="app-icon-img" alt="Krayin CRM" />', ram: "1 GB RAM" },
+    evocrm: { tag: "CRM & Gestão", icon: '<img src="/assets/logos/twentycrm.svg" class="app-icon-img" alt="Evo CRM" />', ram: "1 GB RAM" },
+    calcom: { tag: "Agendamentos Online", icon: '<img src="/assets/logos/calcom.svg" class="app-icon-img" alt="Cal.com" />', ram: "1 GB RAM" },
+    easyappointments: { tag: "Agendamentos Online", icon: '<img src="/assets/logos/calcom.svg" class="app-icon-img" alt="EasyAppointments" />', ram: "512 MB RAM" },
+    nextcloud: { tag: "Arquivos & Nuvem", icon: '<img src="/assets/logos/nextcloud.svg" class="app-icon-img" alt="Nextcloud" />', ram: "1 GB RAM" },
+    outline: { tag: "Wiki & Documentação", icon: '<img src="/assets/logos/outline.svg" class="app-icon-img" alt="Outline" />', ram: "1 GB RAM" },
+    wiki: { tag: "Wiki & Conhecimento", icon: '<img src="/assets/logos/wiki.svg" class="app-icon-img" alt="Wiki.js" />', ram: "1 GB RAM" },
+    docmost: { tag: "Wiki Colaborativa", icon: '<img src="/assets/logos/outline.svg" class="app-icon-img" alt="Docmost" />', ram: "1 GB RAM" },
+    documenso: { tag: "Assinatura Digital", icon: '<img src="/assets/logos/documenso.svg" class="app-icon-img" alt="Documenso" />', ram: "1 GB RAM" },
+    docuseal: { tag: "Assinatura de Documentos", icon: '<img src="/assets/logos/docuseal.svg" class="app-icon-img" alt="DocuSeal" />', ram: "1 GB RAM" },
+    opensign: { tag: "Assinatura Digital", icon: '<img src="/assets/logos/documenso.svg" class="app-icon-img" alt="OpenSign" />', ram: "1 GB RAM" },
+    focalboard: { tag: "Kanban & Projetos", icon: '<img src="/assets/logos/focalboard.svg" class="app-icon-img" alt="Focalboard" />', ram: "512 MB RAM" },
+    planka: { tag: "Kanban & Tarefas", icon: '<img src="/assets/logos/focalboard.svg" class="app-icon-img" alt="Planka" />', ram: "512 MB RAM" },
+    wekan: { tag: "Quadro Kanban", icon: '<img src="/assets/logos/focalboard.svg" class="app-icon-img" alt="Wekan" />', ram: "512 MB RAM" },
+    openproject: { tag: "Gestão de Projetos", icon: '<img src="/assets/logos/focalboard.svg" class="app-icon-img" alt="OpenProject" />', ram: "1.5 GB RAM" },
+    affine: { tag: "Workspace Notion-like", icon: '<img src="/assets/logos/outline.svg" class="app-icon-img" alt="AFFiNE" />', ram: "1 GB RAM" },
+    wordpress: { tag: "CMS & Sites", icon: '<img src="/assets/logos/wordpress.svg" class="app-icon-img" alt="WordPress" />', ram: "1 GB RAM" },
+    bolt: { tag: "CMS Headless", icon: '<img src="/assets/logos/wordpress.svg" class="app-icon-img" alt="Bolt CMS" />', ram: "512 MB RAM" },
+    frappe: { tag: "ERP & Gestão", icon: '<img src="/assets/logos/frappe.svg" class="app-icon-img" alt="ERPNext" />', ram: "2 GB RAM" },
+    odoo: { tag: "ERP Empresarial", icon: '<img src="/assets/logos/odoo.svg" class="app-icon-img" alt="Odoo" />', ram: "2 GB RAM" },
+    metabase: { tag: "BI & Dashboards", icon: '<img src="/assets/logos/metabase.svg" class="app-icon-img" alt="Metabase" />', ram: "1.5 GB RAM" },
+    excalidraw: { tag: "Quadro Branco & Desenho", icon: '<img src="/assets/logos/excalidraw.svg" class="app-icon-img" alt="Excalidraw" />', ram: "512 MB RAM" },
+    wisemapping: { tag: "Mapas Mentais", icon: '<img src="/assets/logos/excalidraw.svg" class="app-icon-img" alt="WiseMapping" />', ram: "512 MB RAM" },
+    checkmate: { tag: "Checklists & Tarefas", icon: '<img src="/assets/logos/focalboard.svg" class="app-icon-img" alt="Checkmate" />', ram: "512 MB RAM" },
+    papra: { tag: "Gestão de Arquivos", icon: '<img src="/assets/logos/nextcloud.svg" class="app-icon-img" alt="Papra" />', ram: "512 MB RAM" },
 
     // Desenvolvimento & Low-Code
-    code_server: { tag: "VS Code no Navegador", icon: "💻", ram: "1 GB RAM" },
-    supabase: { tag: "Backend como Serviço", icon: "⚡", ram: "2 GB RAM" },
-    directus: { tag: "Headless CMS & API", icon: "🎯", ram: "1 GB RAM" },
-    strapi: { tag: "Headless CMS", icon: "🚀", ram: "1 GB RAM" },
-    tooljet: { tag: "Low-Code Interno", icon: "🛠️", ram: "1.5 GB RAM" },
-    appsmith: { tag: "Low-Code para Times", icon: "🔨", ram: "1.5 GB RAM" },
-    lowcoder: { tag: "Low-Code Apps", icon: "🧩", ram: "1 GB RAM" },
-    hoppscotch: { tag: "Testes de API", icon: "🛸", ram: "512 MB RAM" },
+    code_server: { tag: "VS Code no Navegador", icon: '<img src="/assets/logos/code_server.svg" class="app-icon-img" alt="VS Code" />', ram: "1 GB RAM" },
+    supabase: { tag: "Backend como Serviço", icon: '<img src="/assets/logos/supabase.svg" class="app-icon-img" alt="Supabase" />', ram: "2 GB RAM" },
+    directus: { tag: "Headless CMS & API", icon: '<img src="/assets/logos/directus.svg" class="app-icon-img" alt="Directus" />', ram: "1 GB RAM" },
+    strapi: { tag: "Headless CMS", icon: '<img src="/assets/logos/strapi.svg" class="app-icon-img" alt="Strapi" />', ram: "1 GB RAM" },
+    tooljet: { tag: "Low-Code Interno", icon: '<img src="/assets/logos/appsmith.svg" class="app-icon-img" alt="ToolJet" />', ram: "1.5 GB RAM" },
+    appsmith: { tag: "Low-Code para Times", icon: '<img src="/assets/logos/appsmith.svg" class="app-icon-img" alt="Appsmith" />', ram: "1.5 GB RAM" },
+    lowcoder: { tag: "Low-Code Apps", icon: '<img src="/assets/logos/appsmith.svg" class="app-icon-img" alt="Lowcoder" />', ram: "1 GB RAM" },
+    hoppscotch: { tag: "Testes de API", icon: '<img src="/assets/logos/code_server.svg" class="app-icon-img" alt="Hoppscotch" />', ram: "512 MB RAM" },
 
     // Segurança & Auth
-    authentik: { tag: "Autenticação & SSO", icon: "🔐", ram: "1.5 GB RAM" },
-    keycloak: { tag: "Autenticação & Identity", icon: "🛡️", ram: "1.5 GB RAM" },
-    vaultwarden: { tag: "Cofre de Senhas", icon: "🔑", ram: "512 MB RAM" },
-    passbolt: { tag: "Gestão de Senhas", icon: "🗝️", ram: "512 MB RAM" },
-    duplicati: { tag: "Backup em Nuvem", icon: "💾", ram: "512 MB RAM" },
+    authentik: { tag: "Autenticação & SSO", icon: '<img src="/assets/logos/authentik.svg" class="app-icon-img" alt="Authentik" />', ram: "1.5 GB RAM" },
+    keycloak: { tag: "Autenticação & Identity", icon: '<img src="/assets/logos/keycloak.svg" class="app-icon-img" alt="Keycloak" />', ram: "1.5 GB RAM" },
+    vaultwarden: { tag: "Cofre de Senhas", icon: '<img src="/assets/logos/vaultwarden.svg" class="app-icon-img" alt="Vaultwarden" />', ram: "512 MB RAM" },
+    passbolt: { tag: "Gestão de Senhas", icon: '<img src="/assets/logos/passbolt.svg" class="app-icon-img" alt="Passbolt" />', ram: "512 MB RAM" },
+    duplicati: { tag: "Backup em Nuvem", icon: '<img src="/assets/logos/pgbackweb.svg" class="app-icon-img" alt="Duplicati" />', ram: "512 MB RAM" },
 
     // Infra & DevOps
-    uptimekuma: { tag: "Monitoramento de Uptime", icon: "📈", ram: "512 MB RAM" },
-    rabbitmq: { tag: "Filas & Mensageria", icon: "🐇", ram: "1 GB RAM" },
-    kafka: { tag: "Streaming & Mensageria", icon: "📨", ram: "1.5 GB RAM" },
-    netbox: { tag: "Gestão de Infra & IPAM", icon: "🌐", ram: "1 GB RAM" },
-    glpi: { tag: "Helpdesk & Ativos", icon: "🎫", ram: "1 GB RAM" },
-    rustdesk: { tag: "Relay de Acesso Remoto", icon: "🖥️", ram: "512 MB RAM" },
-    ntfy: { tag: "Notificações Push", icon: "🔔", ram: "512 MB RAM" },
-    zerobyte: { tag: "Infraestrutura Leve", icon: "📦", ram: "512 MB RAM" },
-    monitor: { tag: "Monitoramento de Servidor", icon: "📊", ram: "512 MB RAM" },
+    uptimekuma: { tag: "Monitoramento de Uptime", icon: '<img src="/assets/logos/uptimekuma.svg" class="app-icon-img" alt="Uptime Kuma" />', ram: "512 MB RAM" },
+    rabbitmq: { tag: "Filas & Mensageria", icon: '<img src="/assets/logos/rabbitmq.svg" class="app-icon-img" alt="RabbitMQ" />', ram: "1 GB RAM" },
+    kafka: { tag: "Streaming & Mensageria", icon: '<img src="/assets/logos/kafka.svg" class="app-icon-img" alt="Kafka" />', ram: "1.5 GB RAM" },
+    netbox: { tag: "Gestão de Infra & IPAM", icon: '<img src="/assets/logos/uptimekuma.svg" class="app-icon-img" alt="Netbox" />', ram: "1 GB RAM" },
+    glpi: { tag: "Helpdesk & Ativos", icon: '<img src="/assets/logos/glpi.svg" class="app-icon-img" alt="GLPI" />', ram: "1 GB RAM" },
+    rustdesk: { tag: "Relay de Acesso Remoto", icon: '<img src="/assets/logos/rustdesk.svg" class="app-icon-img" alt="RustDesk" />', ram: "512 MB RAM" },
+    ntfy: { tag: "Notificações Push", icon: '<img src="/assets/logos/chatwoot.svg" class="app-icon-img" alt="ntfy" />', ram: "512 MB RAM" },
+    zerobyte: { tag: "Infraestrutura Leve", icon: '<img src="/assets/docker.svg" class="app-icon-img" alt="Zerobyte" />', ram: "512 MB RAM" },
+    monitor: { tag: "Monitoramento de Servidor", icon: '<img src="/assets/logos/uptimekuma.svg" class="app-icon-img" alt="Monitor" />', ram: "512 MB RAM" },
 
     // Marketing
-    mautic: { tag: "Automação de Marketing", icon: "📧", ram: "1 GB RAM" },
-    heyform: { tag: "Formulários Online", icon: "📋", ram: "512 MB RAM" },
-    astracampaign: { tag: "Disparador de Mensagens", icon: "📢", ram: "1 GB RAM" },
-    serpbear: { tag: "Rankings & SEO", icon: "📈", ram: "512 MB RAM" },
+    mautic: { tag: "Automação de Marketing", icon: '<img src="/assets/logos/mautic.svg" class="app-icon-img" alt="Mautic" />', ram: "1 GB RAM" },
+    heyform: { tag: "Formulários Online", icon: '<img src="/assets/logos/typebot.svg" class="app-icon-img" alt="HeyForm" />', ram: "512 MB RAM" },
+    astracampaign: { tag: "Disparador de Mensagens", icon: '<img src="/assets/logos/mautic.svg" class="app-icon-img" alt="Astra Campaign" />', ram: "1 GB RAM" },
+    serpbear: { tag: "Rankings & SEO", icon: '<img src="/assets/logos/metabase.svg" class="app-icon-img" alt="SerpBear" />', ram: "512 MB RAM" },
 
     // Utilitários
-    stirlingpdf: { tag: "Manipulação de PDF", icon: "📄", ram: "512 MB RAM" },
-    browserless: { tag: "Chrome Headless API", icon: "🌐", ram: "1 GB RAM" },
-    shlink: { tag: "Encurtador de URLs", icon: "🔗", ram: "512 MB RAM" },
-    yourls: { tag: "Encurtador de Links", icon: "✂️", ram: "512 MB RAM" },
-    traccar: { tag: "Rastreamento GPS", icon: "🛰️", ram: "512 MB RAM" },
-    azuracast: { tag: "Rádio Online Web", icon: "📻", ram: "1.5 GB RAM" },
-    omnitools: { tag: "Utilitários para Devs", icon: "🧰", ram: "512 MB RAM" },
-    gotenberg: { tag: "Conversão de Arquivos", icon: "📑", ram: "512 MB RAM" },
+    stirlingpdf: { tag: "Manipulação de PDF", icon: '<img src="/assets/logos/stirlingpdf.svg" class="app-icon-img" alt="Stirling PDF" />', ram: "512 MB RAM" },
+    browserless: { tag: "Chrome Headless API", icon: '<img src="/assets/logos/browserless.svg" class="app-icon-img" alt="Browserless" />', ram: "1 GB RAM" },
+    shlink: { tag: "Encurtador de URLs", icon: '<img src="/assets/logos/shlink.svg" class="app-icon-img" alt="Shlink" />', ram: "512 MB RAM" },
+    yourls: { tag: "Encurtador de Links", icon: '<img src="/assets/logos/shlink.svg" class="app-icon-img" alt="YOURLS" />', ram: "512 MB RAM" },
+    traccar: { tag: "Rastreamento GPS", icon: '<img src="/assets/logos/traccar.svg" class="app-icon-img" alt="Traccar" />', ram: "512 MB RAM" },
+    azuracast: { tag: "Rádio Online Web", icon: '<img src="/assets/logos/humhub.svg" class="app-icon-img" alt="AzuraCast" />', ram: "1.5 GB RAM" },
+    omnitools: { tag: "Utilitários para Devs", icon: '<img src="/assets/logos/code_server.svg" class="app-icon-img" alt="OmniTools" />', ram: "512 MB RAM" },
+    gotenberg: { tag: "Conversão de Arquivos", icon: '<img src="/assets/logos/stirlingpdf.svg" class="app-icon-img" alt="Gotenberg" />', ram: "512 MB RAM" },
   };
 
   function resolveAppMeta(a) {
-    if (!a) return { name: "App", tag: "App", icon: "📦", ram: "1 GB RAM", desc: "", includes: "" };
+    if (!a) return { name: "App", tag: "App", icon: '<img src="/assets/docker.svg" class="app-icon-img" alt="App" />', ram: "1 GB RAM", desc: "", includes: "" };
     const isOrion = a.source === "setuporion";
     
     // 1. App oficial registrado
@@ -470,9 +485,10 @@
     // 2. Metadado específico conhecido
     const specific = APP_SPECIFIC_META[a.id] || {};
     const fallbackTag = ORION_CATEGORY_TAGS[a.category] || "Ferramenta";
+    const defaultIcon = '<img src="/assets/docker.svg" class="app-icon-img" alt="Docker Stack" />';
 
     return {
-      icon: specific.icon || (isOrion ? "🚀" : "📦"),
+      icon: specific.icon || defaultIcon,
       name: a.name || a.id,
       tag: specific.tag || fallbackTag,
       ram: specific.ram || "1 GB RAM",
@@ -558,6 +574,12 @@
               <span class="menu-label">Base do Servidor</span>
               ${baseInstalled ? '<span class="menu-pill green">Pronto</span>' : '<span class="menu-pill yellow">Configurar</span>'}
             </button>
+
+            <button class="menu-item ${state.activeTab === "mcp" ? "active" : ""}" data-tab="mcp">
+              <span class="menu-icon">🤖</span>
+              <span class="menu-label">MCP & Agente IA</span>
+              <span class="menu-pill green">Ativo</span>
+            </button>
           </nav>
 
           <div class="sidebar-footer">
@@ -610,6 +632,9 @@
     }
     if (state.activeTab === "base") {
       return renderBaseTab(baseInstalled, ip);
+    }
+    if (state.activeTab === "mcp") {
+      return renderMcpTab(ip);
     }
     return renderMarketplaceTab(baseInstalled, filteredApps, ip);
   }
@@ -983,6 +1008,319 @@
     `;
   }
 
+  // ── Tab: MCP & Agente IA ─────────────────────────────────────────
+  window.__clearMcpTest = () => {
+    state.mcpTestResult = null;
+    render();
+  };
+
+  function renderMcpTab(ip) {
+    const cfg = state.mcpConfig || {};
+    const key = cfg.mcp_api_key || "Carregando chave...";
+    const sseUrl = cfg.sse_url || (ip ? `http://${ip}:8877/mcp/sse?token=${key}` : "");
+    const activeSnippet = state.mcpActiveSnippetTab || "cursor";
+
+    const cursorSnippet = JSON.stringify({
+      "mcpServers": {
+        "setupimpa-vps": {
+          "url": sseUrl
+        }
+      }
+    }, null, 2);
+
+    const claudeSnippet = JSON.stringify({
+      "mcpServers": {
+        "setupimpa-vps": {
+          "url": sseUrl
+        }
+      }
+    }, null, 2);
+
+    const hermesSnippet = JSON.stringify({
+      "name": "SetupImpa VPS Controller",
+      "type": "sse",
+      "url": sseUrl,
+      "token": key
+    }, null, 2);
+
+    const cliSnippet = `python -m mcp.cli --url http://${ip}:8877 --token ${key}`;
+
+    let currentSnippet = cursorSnippet;
+    if (activeSnippet === "claude") currentSnippet = claudeSnippet;
+    else if (activeSnippet === "hermes") currentSnippet = hermesSnippet;
+    else if (activeSnippet === "cli") currentSnippet = cliSnippet;
+
+    return `
+      <div class="page-title-row">
+        <div>
+          <h2>Model Context Protocol (MCP) & Agentes de IA</h2>
+          <p class="page-subtitle">Conecte o Cursor IDE, Claude Desktop, Claude Code, Cline ou Hermes diretamente à sua VPS com automação inteligente e comandos nativos.</p>
+        </div>
+      </div>
+
+      <div class="mcp-overview-card">
+        <div class="mcp-status-banner">
+          <div class="mcp-status-pulse"></div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem;">
+              <span class="mcp-title-badge">MCP SERVER NATIVO ATIVO</span>
+              <span class="mcp-pill green">Porta :8877 Online</span>
+              <span class="mcp-pill blue">16 Ferramentas</span>
+            </div>
+            <p class="mcp-status-desc">
+              Qualquer agente de inteligência artificial conectado a este endpoint pode consultar a saúde da VPS em tempo real, auditar containers, instalar ferramentas do catálogo com 1 comando e configurar apontamentos DNS na Cloudflare.
+            </p>
+          </div>
+        </div>
+
+        <div class="mcp-key-section">
+          <div class="mcp-field-group">
+            <label class="mcp-label">Sua Chave de Acesso MCP (API Key Privada)</label>
+            <div class="mcp-input-box">
+              <input type="text" readonly value="${escapeHtml(key)}" id="mcp-key-input" class="mcp-input-code" />
+              <button class="btn-copy-mini" id="btn-copy-mcp-key" title="Copiar Chave">📋 Copiar Chave</button>
+              <button class="btn-regen-mini" id="btn-regen-mcp-key" title="Gerar Nova Chave">🔄 Regenerar Chave</button>
+            </div>
+            <span class="mcp-hint">Mantenha esta chave segura. Ela concede ao seu agente de IA permissão para gerenciar a VPS.</span>
+          </div>
+
+          <div class="mcp-field-group">
+            <label class="mcp-label">Endpoint Oficial SSE (Server-Sent Events)</label>
+            <div class="mcp-input-box">
+              <input type="text" readonly value="${escapeHtml(sseUrl)}" id="mcp-sse-input" class="mcp-input-code" />
+              <button class="btn-copy-mini" id="btn-copy-mcp-sse" title="Copiar URL SSE">📋 Copiar URL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Configuração Rápida em 1 Clique -->
+      <div class="mcp-config-card">
+        <div class="mcp-config-header">
+          <h3>Como Conectar seu Agente em 1 Minuto</h3>
+          <p>Escolha seu assistente de IA preferido e copie o bloco de configuração:</p>
+        </div>
+
+        <div class="mcp-tab-pills">
+          <button class="mcp-tab-pill ${activeSnippet === 'cursor' ? 'active' : ''}" data-mcp-tab="cursor">
+            <span class="tab-icon">⚡</span> Cursor IDE
+          </button>
+          <button class="mcp-tab-pill ${activeSnippet === 'claude' ? 'active' : ''}" data-mcp-tab="claude">
+            <span class="tab-icon">🟣</span> Claude Desktop
+          </button>
+          <button class="mcp-tab-pill ${activeSnippet === 'hermes' ? 'active' : ''}" data-mcp-tab="hermes">
+            <span class="tab-icon"><img src="/assets/hermes-dark.svg" style="width: 14px; height: 14px; vertical-align: middle;" /></span> Hermes Agente IA
+          </button>
+          <button class="mcp-tab-pill ${activeSnippet === 'cli' ? 'active' : ''}" data-mcp-tab="cli">
+            <span class="tab-icon">💻</span> CLI / Terminal / Python
+          </button>
+        </div>
+
+        <div class="mcp-snippet-container">
+          <div class="snippet-header">
+            <span class="snippet-lang">${activeSnippet === 'cli' ? 'BASH / TERMINAL' : 'JSON (Configuração)'}</span>
+            <button class="btn-copy-code" id="btn-copy-mcp-snippet">📋 Copiar Configuração</button>
+          </div>
+          <pre class="mcp-pre"><code>${escapeHtml(currentSnippet)}</code></pre>
+          <div class="mcp-tab-instructions">
+            ${activeSnippet === 'cursor' ? `
+              <strong>Instruções para o Cursor:</strong>
+              <ol style="margin-left: 1.25rem; margin-top: 0.4rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                <li>No Cursor, vá em <code>Cursor Settings</code> &gt; <code>MCP</code> &gt; <code>Add new MCP server</code>.</li>
+                <li>Ou adicione o bloco acima ao seu arquivo <code>.cursor/mcp.json</code> na raiz do projeto.</li>
+                <li>Pronto! O Cursor identificará automaticamente as 16 ferramentas do SetupImpa.</li>
+              </ol>
+            ` : activeSnippet === 'claude' ? `
+              <strong>Instruções para o Claude Desktop:</strong>
+              <ol style="margin-left: 1.25rem; margin-top: 0.4rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                <li>Abra o Claude Desktop e acesse <code>Configurações</code> &gt; <code>Desenvolvedor</code> &gt; <code>Editar Configuração</code>.</li>
+                <li>Cole o bloco JSON acima no arquivo <code>claude_desktop_config.json</code>.</li>
+                <li>Reinicie o Claude Desktop. O ícone de martelo exibirá as ferramentas da sua VPS.</li>
+              </ol>
+            ` : activeSnippet === 'hermes' ? `
+              <strong>Instruções para o Hermes:</strong>
+              <ol style="margin-left: 1.25rem; margin-top: 0.4rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                <li>Se o Hermes estiver instalado nesta VPS, ele pode se conectar via rede interna com latência zero usando a URL acima.</li>
+                <li>Adicione o SetupImpa como fonte MCP nas configurações do Hermes.</li>
+                <li>O Hermes poderá monitorar e operar a infraestrutura de forma 100% autônoma.</li>
+              </ol>
+            ` : `
+              <strong>Uso via CLI / Terminal:</strong>
+              <p style="margin-top: 0.4rem; font-size: 0.85rem; color: var(--text-muted);">
+                Execute o proxy em Python para utilizar o protocolo stdio clássico do MCP a partir de qualquer script ou terminal local.
+              </p>
+            `}
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Test & Interactive Diagnostics -->
+      <div class="mcp-test-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h3>Testar Comunicação do MCP em Tempo Real</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; margin-top: 0.2rem;">
+              Simule a chamada que a IA faz para a ferramenta <code>vps_get_system_health</code> e veja os dados retornados em tempo real.
+            </p>
+          </div>
+          <button class="btn-hosteg-primary" id="btn-test-mcp-health" ${state.mcpTesting ? "disabled" : ""}>
+            ${state.mcpTesting ? "Consultando VPS..." : "🧪 Executar Teste Agora"}
+          </button>
+        </div>
+
+        ${state.mcpTestResult ? `
+          <div class="mcp-test-result-box">
+            <div class="test-result-header">
+              <span>Resposta JSON-RPC da VPS:</span>
+              <button class="btn-clear-test" onclick="window.__clearMcpTest()">Limpar</button>
+            </div>
+            <pre class="mcp-test-pre"><code>${escapeHtml(state.mcpTestResult)}</code></pre>
+          </div>
+        ` : ""}
+      </div>
+
+      <!-- Ferramentas MCP Nativas (DevOps Toolkit) -->
+      <div class="mcp-tools-section">
+        <div class="page-title-row" style="margin-bottom: 1rem;">
+          <div>
+            <h3>Ferramentas Integradas do Agente (DevOps Toolkit)</h3>
+            <p class="page-subtitle">O agente de IA tem permissão controlada para executar estas 16 ações de alto nível:</p>
+          </div>
+        </div>
+
+        <div class="mcp-tools-grid">
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🩺</span>
+              <strong class="tool-name">vps_get_system_health</strong>
+            </div>
+            <p class="tool-desc">Diagnóstico em tempo real de CPU, RAM livre/usada, Disco (/), Uptime, IP e status do Swarm.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🛡</span>
+              <strong class="tool-name">vps_check_updates</strong>
+            </div>
+            <p class="tool-desc">Auditoria de atualizações pendentes do sistema operacional e detecção de containers com falhas.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🐳</span>
+              <strong class="tool-name">vps_list_containers</strong>
+            </div>
+            <p class="tool-desc">Lista todos os containers Docker presentes no host com status, imagens e portas.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">📜</span>
+              <strong class="tool-name">vps_get_container_logs</strong>
+            </div>
+            <p class="tool-desc">Lê os logs finais de stdout/stderr de qualquer serviço para depuração de erros em tempo real.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🧹</span>
+              <strong class="tool-name">vps_docker_prune</strong>
+            </div>
+            <p class="tool-desc">Purga com segurança imagens órfãs, build cache e containers parados para liberar disco.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🔄</span>
+              <strong class="tool-name">vps_restart_service</strong>
+            </div>
+            <p class="tool-desc">Reinicia graciosamente uma stack Swarm ou container sem perda de dados ou volumes.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🏪</span>
+              <strong class="tool-name">apps_catalog_list</strong>
+            </div>
+            <p class="tool-desc">Permite à IA pesquisar e filtrar em todo o catálogo de +105 aplicações prontas.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🔍</span>
+              <strong class="tool-name">apps_catalog_get_details</strong>
+            </div>
+            <p class="tool-desc">Recupera a ficha técnica com parâmetros obrigatórios, portas e bancos necessários.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">📦</span>
+              <strong class="tool-name">apps_list_instances</strong>
+            </div>
+            <p class="tool-desc">Informa à IA todas as instâncias em execução na VPS, com seus respectivos domínios e URLs.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🔑</span>
+              <strong class="tool-name">apps_get_instance_credentials</strong>
+            </div>
+            <p class="tool-desc">Acesso seguro a senhas geradas, tokens de API e strings de conexão de banco de dados.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🚀</span>
+              <strong class="tool-name">apps_install</strong>
+            </div>
+            <p class="tool-desc">Instala qualquer ferramenta na VPS com 1 comando, banco de dados e SSL Traefik automático.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🗑</span>
+              <strong class="tool-name">apps_remove_instance</strong>
+            </div>
+            <p class="tool-desc">Desinstalação e limpeza completa de uma instância da stack e do registro com confirmação.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">🌐</span>
+              <strong class="tool-name">dns_check_domain</strong>
+            </div>
+            <p class="tool-desc">Verifica se um domínio já aponta para a VPS e testa a emissão de certificado SSL.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">⚡</span>
+              <strong class="tool-name">dns_cloudflare_setup</strong>
+            </div>
+            <p class="tool-desc">Cria ou atualiza automaticamente o apontamento DNS tipo A na Cloudflare para a VPS.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">☁</span>
+              <strong class="tool-name">dns_cloudflare_status</strong>
+            </div>
+            <p class="tool-desc">Verifica a disponibilidade da integração com a API da Cloudflare na VPS.</p>
+          </div>
+
+          <div class="mcp-tool-card">
+            <div class="mcp-tool-top">
+              <span class="tool-icon">⚙</span>
+              <strong class="tool-name">vps_execute_safe_command</strong>
+            </div>
+            <p class="tool-desc">Executa comandos autorizados de diagnóstico (uptime, df, free, docker ps, docker stack ls).</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // ── Binds de Eventos ─────────────────────────────────────────────
   function bindEvents() {
     app.querySelectorAll("[data-tab]").forEach(btn => {
@@ -991,9 +1329,99 @@
         if (state.activeTab === "base") {
           loadBaseInfo();
         }
+        if (state.activeTab === "mcp") {
+          loadMcpConfig();
+        }
         render();
       };
     });
+
+    // ── MCP Tab Events ───────────────────────────
+    app.querySelectorAll("[data-mcp-tab]").forEach(btn => {
+      btn.onclick = () => {
+        state.mcpActiveSnippetTab = btn.dataset.mcpTab;
+        render();
+      };
+    });
+
+    const btnCopyKey = document.getElementById("btn-copy-mcp-key");
+    if (btnCopyKey) {
+      btnCopyKey.onclick = () => {
+        const key = state.mcpConfig?.mcp_api_key || "";
+        if (key) {
+          navigator.clipboard.writeText(key);
+          toast("Chave de API MCP copiada para a área de transferência!", "ok");
+        }
+      };
+    }
+
+    const btnCopySse = document.getElementById("btn-copy-mcp-sse");
+    if (btnCopySse) {
+      btnCopySse.onclick = () => {
+        const sse = state.mcpConfig?.sse_url || "";
+        if (sse) {
+          navigator.clipboard.writeText(sse);
+          toast("URL SSE do MCP copiada com sucesso!", "ok");
+        }
+      };
+    }
+
+    const btnRegenKey = document.getElementById("btn-regen-mcp-key");
+    if (btnRegenKey) {
+      btnRegenKey.onclick = async () => {
+        if (!confirm("Tem certeza que deseja regenerar a chave do MCP? Agentes conectados precisarão atualizar a chave.")) return;
+        try {
+          await api("/api/mcp/key/regenerate", { method: "POST" });
+          toast("Nova chave de API MCP gerada com sucesso!", "ok");
+          await loadMcpConfig();
+        } catch (e) {
+          toast("Erro ao regenerar chave: " + e.message, "err");
+        }
+      };
+    }
+
+    const btnCopySnippet = document.getElementById("btn-copy-mcp-snippet");
+    if (btnCopySnippet) {
+      btnCopySnippet.onclick = () => {
+        const pre = document.querySelector(".mcp-pre code");
+        if (pre) {
+          navigator.clipboard.writeText(pre.innerText);
+          toast("Configuração copiada para a área de transferência!", "ok");
+        }
+      };
+    }
+
+    const btnTestHealth = document.getElementById("btn-test-mcp-health");
+    if (btnTestHealth) {
+      btnTestHealth.onclick = async () => {
+        state.mcpTesting = true;
+        state.mcpTestResult = null;
+        render();
+        try {
+          const res = await api("/mcp/rpc", {
+            method: "POST",
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: Date.now(),
+              method: "tools/call",
+              params: {
+                name: "vps_get_system_health",
+                arguments: {}
+              }
+            })
+          });
+          const rawText = res?.result?.content?.[0]?.text;
+          state.mcpTestResult = rawText || JSON.stringify(res, null, 2);
+          toast("Diagnóstico da VPS executado com sucesso pelo MCP!", "ok");
+        } catch (e) {
+          state.mcpTestResult = "Erro na requisição: " + e.message;
+          toast("Falha ao testar MCP: " + e.message, "err");
+        } finally {
+          state.mcpTesting = false;
+          render();
+        }
+      };
+    }
 
     const searchInput = document.getElementById("marketplace-search");
     if (searchInput) {

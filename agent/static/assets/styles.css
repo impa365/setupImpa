@@ -1569,12 +1569,9 @@ html, body {
   flex-wrap: wrap;
   margin-top: 0.2rem;
 }
-.app-tag-pill.orion-tag {
-  background: rgba(147, 197, 253, 0.12);
-  color: #93c5fd;
-  border: 1px solid rgba(147, 197, 253, 0.28);
-}
-.app-tag-pill.official-tag {
+.app-tag-pill.orion-tag,
+.app-tag-pill.official-tag,
+.app-tag-pill {
   background: rgba(52, 211, 153, 0.12);
   color: #34d399;
   border: 1px solid rgba(52, 211, 153, 0.28);
@@ -1608,6 +1605,30 @@ html, body {
   align-items: center;
   justify-content: center;
   font-size: 1.25rem;
+  width: 26px;
+  height: 26px;
+}
+.app-avatar-mini img,
+.app-avatar-mini svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.inst-avatar-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 3px;
+}
+.inst-avatar-mini img,
+.inst-avatar-mini svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 @media (max-width: 900px) {
@@ -1640,3 +1661,326 @@ html, body {
   .base-details-grid { grid-template-columns: 1fr; }
   .portainer-cred-box { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
 }
+
+/* ── MCP & AI Agent Studio Styles ───────────────────────────────── */
+.mcp-overview-card,
+.mcp-config-card,
+.mcp-test-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.mcp-status-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem;
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+}
+
+.mcp-status-pulse {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: mcp-pulse 2s infinite;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+@keyframes mcp-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.mcp-title-badge {
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #34d399;
+}
+
+.mcp-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+}
+.mcp-pill.green {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.mcp-pill.blue {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.mcp-status-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.mcp-key-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.mcp-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mcp-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.mcp-hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.mcp-input-box {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.mcp-input-code {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.86rem;
+  outline: none;
+}
+.mcp-input-code:focus {
+  border-color: var(--border-focus);
+}
+
+.btn-copy-mini,
+.btn-regen-mini {
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  border: 1px solid var(--border);
+}
+.btn-copy-mini {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.btn-copy-mini:hover {
+  background: rgba(59, 130, 246, 0.22);
+}
+.btn-regen-mini {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+}
+.btn-regen-mini:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.mcp-config-header h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
+}
+.mcp-config-header p {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.mcp-tab-pills {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.mcp-tab-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mcp-tab-pill:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-main);
+}
+.mcp-tab-pill.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+.mcp-snippet-container {
+  background: #090c14;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.snippet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+}
+
+.snippet-lang {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.btn-copy-code {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-copy-code:hover {
+  background: rgba(59, 130, 246, 0.28);
+}
+
+.mcp-pre {
+  margin: 0;
+  padding: 1.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #93c5fd;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.mcp-tab-instructions {
+  padding: 0.9rem 1.15rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.mcp-test-result-box {
+  margin-top: 1rem;
+  background: #090c14;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.test-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.9rem;
+  background: rgba(16, 185, 129, 0.08);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #34d399;
+}
+.btn-clear-test {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.btn-clear-test:hover { color: var(--text-main); }
+.mcp-test-pre {
+  margin: 0;
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #a7f3d0;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.mcp-tools-section {
+  margin-top: 2rem;
+}
+
+.mcp-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.mcp-tool-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.15rem;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.mcp-tool-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.mcp-tool-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+}
+.tool-icon {
+  font-size: 1.25rem;
+}
+.tool-name {
+  font-size: 0.88rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #60a5fa;
+  font-weight: 700;
+}
+.tool-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
