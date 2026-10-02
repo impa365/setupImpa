@@ -454,6 +454,7 @@
 
   // ── Tab: Marketplace de APPs ────────────────────────────────────
   function renderMarketplaceTab(baseInstalled, filteredApps, ip) {
+    const rawApps = (state.apps || []).filter(a => a.id !== "base");
     return `
       ${!baseInstalled ? `
         <div class="notice-banner">
