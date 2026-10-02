@@ -119,10 +119,29 @@ def disk_free_bytes(path: str = "/") -> int:
 
 
 def docker_installed() -> bool:
+    # O agent roda dentro de um container com /var/run/docker.sock montado
+    sock = Path("/var/run/docker.sock")
+    if sock.exists():
+        try:
+            import docker
+            client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+            client.ping()
+            return True
+        except Exception:
+            pass
     return shutil.which("docker") is not None
 
 
 def swarm_active() -> bool:
+    sock = Path("/var/run/docker.sock")
+    if sock.exists():
+        try:
+            import docker
+            client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+            info = client.info()
+            return info.get("Swarm", {}).get("LocalNodeState", "").lower() == "active"
+        except Exception:
+            pass
     if not docker_installed():
         return False
     try:
@@ -133,6 +152,16 @@ def swarm_active() -> bool:
 
 
 def stack_exists(name: str) -> bool:
+    sock = Path("/var/run/docker.sock")
+    if sock.exists():
+        try:
+            import docker
+            client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+            services = client.services.list(filters={"label": f"com.docker.stack.namespace={name}"})
+            if len(services) > 0:
+                return True
+        except Exception:
+            pass
     try:
         out = subprocess.check_output(["docker", "stack", "ls", "--format", "{{.Name}}"], text=True)
         return name in {l.strip() for l in out.splitlines() if l.strip()}

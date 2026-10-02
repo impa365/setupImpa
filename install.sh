@@ -208,11 +208,15 @@ start_agent() {
   info "Iniciando servidor do painel na porta $AGENT_PORT..."
   docker pull python:3.12-slim >/dev/null 2>&1 || true
 
+  local docker_bin
+  docker_bin="$(command -v docker 2>/dev/null || echo '/usr/bin/docker')"
+
   docker run -d \
     --name setupimpa-agent \
     --restart unless-stopped \
     -p "${AGENT_PORT}:8877" \
     -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${docker_bin}:/usr/bin/docker:ro" \
     -v /root:/root \
     -v /opt/setupimpa:/opt/setupimpa \
     -v /var/log:/var/log \
