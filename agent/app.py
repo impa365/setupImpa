@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import threading
 import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from installer import auth, base, checks, cloudflare, orion_engine, portainer_client, registry, validate
+from installer import auth, base, checks, cloudflare, devops, orion_engine, portainer_client, registry, validate, metrics_history, panel_domain
 from installer.apps import evolution, getfy, hermes, ninerouter, omniroute, postgres
 from mcp import mcp_router
 
@@ -38,6 +39,32 @@ log = logging.getLogger("setupimpa")
 
 app = FastAPI(title="SetupImpa", version=VERSION)
 app.include_router(mcp_router)
+
+
+@app.middleware("http")
+async def check_port_exposure_middleware(request: Request, call_next):
+    """Enforces port 8877 stealth toggle: if disabled, blocks non-Traefik direct IP access."""
+    if request.url.path in ("/api/health", "/api/auth/status"):
+        return await call_next(request)
+
+    domain = panel_domain.get_configured_domain()
+    if domain and not panel_domain.is_port_exposed():
+        is_traefik = (
+            request.headers.get("x-forwarded-proto") == "https"
+            or request.headers.get("x-forwarded-port") == "443"
+            or request.headers.get("host", "").split(":")[0] == domain
+        )
+        if not is_traefik:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "porta_8877_oculta",
+                    "message": "Acesso direto via porta 8877 desativado pelo administrador. Utilize o domínio seguro HTTPS ou reative o IP Fallback no painel.",
+                },
+            )
+
+    return await call_next(request)
 JOBS: dict[str, dict[str, Any]] = {}
 APPS = {
     "postgres": postgres,
@@ -65,6 +92,9 @@ def require_auth(
     token = _extract_bearer(authorization, x_setupimpa_token)
     sess = auth.validate_session(token)
     if not sess:
+        env_token = os.environ.get("SETUPIMPA_TOKEN", "").strip()
+        if env_token and token and secrets.compare_digest(token, env_token):
+            return {"user": "root", "auth_type": "env_token"}
         raise HTTPException(status_code=401, detail="nao_autenticado")
     return sess
 
@@ -114,6 +144,15 @@ class InstallAppBody(BaseModel):
 
 class RemoveInstanceBody(BaseModel):
     instance_id: str
+
+
+class PanelDomainBody(BaseModel):
+    domain: str
+    auto_cloudflare: bool = True
+
+
+class PanelExposureBody(BaseModel):
+    expose: bool
 
 
 # ── Auth endpoints ──────────────────────────────────────────────────
@@ -532,6 +571,61 @@ def _format_creds(inst: dict) -> str:
     lines.append(f"\nStack: {inst.get('stack_name', '')}")
     lines.append(f"Instancia: #{inst.get('instance_num', '')}")
     return "\n".join(lines)
+
+
+# ── DevOps / Telemetry (htop visual & histórico) ─────────────────
+
+import asyncio
+
+async def _metrics_collector_loop():
+    metrics_history.init_db()
+    while True:
+        try:
+            stats = devops.collect_devops_stats()
+            metrics_history.record_sample(stats)
+        except Exception as e:
+            log.warning("Metrics collector tick failed: %s", e)
+        await asyncio.sleep(30)
+
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(_metrics_collector_loop())
+
+
+@app.get("/api/devops/stats")
+def devops_stats(_: dict = Depends(require_auth)):
+    return devops.collect_devops_stats()
+
+
+@app.get("/api/devops/history")
+def devops_history(range: str = "24h", _: dict = Depends(require_auth)):
+    return metrics_history.get_history(range)
+
+
+# ── Domínio Próprio & Traefik SSL do Painel ────────────────────────
+
+@app.get("/api/panel-domain")
+def get_panel_domain(_: dict = Depends(require_auth)):
+    return panel_domain.get_panel_domain_info()
+
+
+@app.post("/api/panel-domain")
+def set_panel_domain_endpoint(body: PanelDomainBody, _: dict = Depends(require_auth)):
+    res = panel_domain.set_panel_domain(body.domain, auto_cloudflare=body.auto_cloudflare)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "falha_configurar_dominio"))
+    return res
+
+
+@app.post("/api/panel-domain/exposure")
+def set_panel_exposure_endpoint(body: PanelExposureBody, _: dict = Depends(require_auth)):
+    return panel_domain.toggle_port_exposure(body.expose)
+
+
+@app.delete("/api/panel-domain")
+def remove_panel_domain_endpoint(_: dict = Depends(require_auth)):
+    return panel_domain.remove_panel_domain()
 
 
 # ── Static SPA ──────────────────────────────────────────────────────

@@ -6,7 +6,10 @@ import platform
 import re
 import shutil
 import socket
+import ssl
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -36,14 +39,13 @@ def public_ip() -> str:
     env = os.environ.get("SETUPIMPA_PUBLIC_IP", "").strip()
     if env:
         return env
-    for cmd in (
-        ["curl", "-s4", "--max-time", "4", "ifconfig.me"],
-        ["curl", "-s4", "--max-time", "4", "icanhazip.com"],
-    ):
+    for url in ("https://ifconfig.me/ip", "https://icanhazip.com", "https://api.ipify.org"):
         try:
-            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
-            if re.match(r"^\d+\.\d+\.\d+\.\d+$", out):
-                return out
+            req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                out = resp.read().decode("utf-8").strip()
+                if re.match(r"^\d+\.\d+\.\d+\.\d+$", out):
+                    return out
         except Exception:
             continue
     try:
@@ -110,22 +112,35 @@ def resolve_domain_a(domain: str) -> str:
 
 def traefik_host_health(domain: str) -> dict[str, Any]:
     domain = normalize_domain(domain)
+    ok_codes = {200, 301, 302, 307, 308, 401, 403, 404, 503}
+    # 1. Try strict SSL verification (validates Let's Encrypt / public CA cert)
     try:
-        out = subprocess.check_output(
-            [
-                "curl", "-sk", "-o", "/dev/null", "-w", "%{http_code}",
-                "-H", f"Host: {domain}",
-                "--max-time", "8",
-                "https://127.0.0.1/",
-            ],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-        code = int(out) if out.isdigit() else 0
+        ctx = ssl.create_default_context()
+        req = urllib.request.Request(
+            f"https://{domain}/",
+            headers={"User-Agent": "SetupImpa-HealthCheck/1.0"},
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+            code = resp.status
+            return {"http_code": code, "ok": True, "ssl_valid": True}
+    except urllib.error.HTTPError as e:
+        return {"http_code": e.code, "ok": e.code in ok_codes, "ssl_valid": True}
     except Exception:
-        code = 0
-    ok_codes = {200, 301, 302, 307, 308, 401, 404, 503}
-    return {"http_code": code, "ok": code in ok_codes}
+        pass
+
+    # 2. Fallback to unverified context to test if service responds on HTTPS
+    try:
+        unverified_ctx = ssl._create_unverified_context()
+        req = urllib.request.Request(
+            f"https://{domain}/",
+            headers={"User-Agent": "SetupImpa-HealthCheck/1.0"},
+        )
+        with urllib.request.urlopen(req, context=unverified_ctx, timeout=8) as resp:
+            return {"http_code": resp.status, "ok": True, "ssl_valid": False}
+    except urllib.error.HTTPError as he:
+        return {"http_code": he.code, "ok": he.code in ok_codes, "ssl_valid": False}
+    except Exception:
+        return {"http_code": 0, "ok": False, "ssl_valid": False}
 
 
 def disk_free_bytes(path: str = "/") -> int:

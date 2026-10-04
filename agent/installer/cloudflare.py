@@ -73,11 +73,24 @@ def _cf_request(method: str, path: str, token: str, body: dict | None = None) ->
 def verify_token(token: str) -> dict[str, Any]:
     """Validate a Cloudflare API token and return scope info."""
     result = _cf_request("GET", "/user/tokens/verify", token)
-    if result.get("success") and result.get("result", {}).get("status") == "active":
-        return {"ok": True, "status": "active"}
-    errors = result.get("errors", [])
-    msg = errors[0].get("message", "token_invalido") if errors else "token_invalido"
-    return {"ok": False, "error": msg}
+    if not (result.get("success") and result.get("result", {}).get("status") == "active"):
+        errors = result.get("errors", [])
+        msg = errors[0].get("message", "token_invalido") if errors else "token_invalido"
+        return {"ok": False, "error": msg}
+
+    # Inspect zone permissions to verify if DNS:Edit is granted
+    zones_res = _cf_request("GET", "/zones?per_page=1", token)
+    can_edit_dns = False
+    if zones_res.get("success") and zones_res.get("result"):
+        perms = zones_res["result"][0].get("permissions", [])
+        can_edit_dns = "#dns_records:edit" in perms
+
+    return {
+        "ok": True,
+        "status": "active",
+        "can_edit_dns": can_edit_dns,
+        "warning": None if can_edit_dns else "Token ativo, porém possui permissão apenas de Leitura (#dns_records:read). Adicione 'Zone : DNS : Edit' na Cloudflare para automação completa."
+    }
 
 
 # ── Zone lookup ───────────────────────────────────────────────────
@@ -176,6 +189,8 @@ def create_or_update_dns(
             }
         errors = result.get("errors", [])
         msg = errors[0].get("message", "update_failed") if errors else "update_failed"
+        if "Authentication error" in msg or "10000" in str(errors):
+            msg = "Token sem permissão de escrita. Adicione a permissão 'Zone : DNS : Edit' no seu token na Cloudflare."
         return {"ok": False, "error": msg, "action": "update_failed"}
     else:
         # Create new record
@@ -194,6 +209,8 @@ def create_or_update_dns(
             }
         errors = result.get("errors", [])
         msg = errors[0].get("message", "create_failed") if errors else "create_failed"
+        if "Authentication error" in msg or "10000" in str(errors):
+            msg = "Token sem permissão de escrita. Adicione a permissão 'Zone : DNS : Edit' no seu token na Cloudflare."
         return {"ok": False, "error": msg, "action": "create_failed"}
 
 

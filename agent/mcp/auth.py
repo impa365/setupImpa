@@ -58,7 +58,7 @@ def regenerate_mcp_key() -> str:
 
 
 def validate_mcp_token(token: str | None) -> dict[str, Any] | None:
-    """Validate bearer token against persistent MCP key OR panel session token."""
+    """Validate bearer token against persistent MCP key OR panel session token OR root env token."""
     if not token:
         return None
     token = token.strip()
@@ -74,5 +74,11 @@ def validate_mcp_token(token: str | None) -> dict[str, Any] | None:
     session = auth.validate_session(token)
     if session:
         return {"authenticated": True, "auth_type": "admin_session", "user": session.get("username", "admin")}
+
+    # 3. Check root deployment token
+    import os
+    env_token = os.environ.get("SETUPIMPA_TOKEN", "").strip()
+    if env_token and secrets.compare_digest(token, env_token):
+        return {"authenticated": True, "auth_type": "env_token", "user": "root"}
 
     return None

@@ -1,5 +1,14 @@
 (() => {
   const app = document.getElementById("app");
+  const VALID_TABS = ["marketplace", "instances", "devops", "cloudflare", "base", "mcp"];
+  function getInitialTab() {
+    const hash = (window.location.hash || "").replace("#", "").trim();
+    if (hash && VALID_TABS.includes(hash)) return hash;
+    const saved = localStorage.getItem("setupimpa_active_tab");
+    if (saved && VALID_TABS.includes(saved)) return saved;
+    return "marketplace";
+  }
+
   const state = {
     token: localStorage.getItem("setupimpa_session") || "",
     username: localStorage.getItem("setupimpa_user") || "",
@@ -21,7 +30,18 @@
     dialog: null, // { title, message, icon, confirmText, cancelText, danger, onConfirm }
     cfConfigured: false,
     cfStatus: null,
-    activeTab: "marketplace", // 'marketplace' | 'instances' | 'cloudflare' | 'base' | 'mcp'
+    activeTab: getInitialTab(), // 'marketplace' | 'instances' | 'devops' | 'cloudflare' | 'base' | 'mcp'
+    devops: null,
+    devopsAutoRefresh: true,
+    devopsInterval: null,
+    devopsLoading: false,
+    devopsSearch: "",
+    devopsHistory: null,
+    devopsHistoryRange: "24h", // '1h' | '2h' | '24h' | '7d' | '30d'
+    devopsHistoryMetric: "all", // 'all' | 'cpu' | 'memory' | 'disk'
+    devopsHistoryLoading: false,
+    panelDomain: null,
+    panelDomainLoading: false,
     mcpConfig: null,
     mcpActiveSnippetTab: "cursor",
     mcpTesting: false,
@@ -223,9 +243,154 @@
     } catch (_) {}
 
     state.step = "dashboard";
-    await Promise.all([loadApps(), loadBaseInfo()]);
+    const loaders = [loadApps(), loadBaseInfo(), loadDevOpsStats(true)];
+    if (state.activeTab === "mcp") loaders.push(loadMcpConfig());
+    await Promise.all(loaders);
+
+    if (state.activeTab === "devops") {
+      startDevopsPolling();
+      loadDevOpsHistory(state.devopsHistoryRange, true);
+    }
+    if (state.activeTab === "base") {
+      loadPanelDomainInfo();
+    }
+
     render();
   }
+
+  async function loadDevOpsStats(silent = false) {
+    if (!state.token) return;
+    if (!silent) {
+      state.devopsLoading = true;
+      render();
+    }
+    try {
+      const res = await api("/api/devops/stats");
+      state.devops = res;
+      state.devopsLoading = false;
+      if (silent && state.activeTab === "devops") {
+        updateDevOpsDOM(res);
+      } else {
+        render();
+      }
+    } catch (e) {
+      state.devopsLoading = false;
+      if (!silent) {
+        toast("Falha ao atualizar métricas DevOps: " + e.message, "err");
+        render();
+      }
+    }
+  }
+
+  function startDevopsPolling() {
+    stopDevopsPolling();
+    if (!state.devopsAutoRefresh) return;
+    state.devopsInterval = setInterval(() => {
+      if (state.activeTab === "devops" && state.token && state.devopsAutoRefresh) {
+        loadDevOpsStats(true);
+      }
+    }, 3500);
+  }
+
+  function stopDevopsPolling() {
+    if (state.devopsInterval) {
+      clearInterval(state.devopsInterval);
+      state.devopsInterval = null;
+    }
+  }
+
+  async function loadDevOpsHistory(range = state.devopsHistoryRange, silent = false) {
+    if (!state.token) return;
+    state.devopsHistoryRange = range;
+    if (!silent) {
+      state.devopsHistoryLoading = true;
+      render();
+    }
+    try {
+      const res = await api(`/api/devops/history?range=${encodeURIComponent(range)}`);
+      state.devopsHistory = res;
+      state.devopsHistoryLoading = false;
+      render();
+    } catch (e) {
+      state.devopsHistoryLoading = false;
+      if (!silent) toast("Falha ao carregar histórico DevOps: " + e.message, "err");
+      render();
+    }
+  }
+
+  async function loadPanelDomainInfo() {
+    if (!state.token) return;
+    try {
+      const res = await api("/api/panel-domain");
+      state.panelDomain = res;
+      render();
+    } catch (_) {}
+  }
+
+  async function savePanelDomain(domain, autoCloudflare = true) {
+    state.panelDomainLoading = true;
+    render();
+    try {
+      const res = await api("/api/panel-domain", {
+        method: "POST",
+        body: JSON.stringify({ domain, auto_cloudflare: autoCloudflare }),
+      });
+      toast(res.message || "Domínio configurado com sucesso!", (res.cf_result && !res.cf_result.ok) ? "warn" : "ok");
+      await loadPanelDomainInfo();
+    } catch (e) {
+      toast("Erro ao conectar domínio: " + e.message, "err");
+    } finally {
+      state.panelDomainLoading = false;
+      render();
+    }
+  }
+
+  async function removePanelDomain() {
+    state.panelDomainLoading = true;
+    render();
+    try {
+      const res = await api("/api/panel-domain", { method: "DELETE" });
+      toast(res.message || "Domínio removido.", "ok");
+      await loadPanelDomainInfo();
+    } catch (e) {
+      toast("Erro ao remover domínio: " + e.message, "err");
+    } finally {
+      state.panelDomainLoading = false;
+      render();
+    }
+  }
+
+  function switchTab(newTab) {
+    if (!VALID_TABS.includes(newTab)) newTab = "marketplace";
+    const prevTab = state.activeTab;
+    state.activeTab = newTab;
+    localStorage.setItem("setupimpa_active_tab", newTab);
+    if (window.location.hash !== "#" + newTab) {
+      try {
+        history.replaceState(null, "", "#" + newTab);
+      } catch (_) {}
+    }
+    if (state.activeTab === "base") {
+      loadBaseInfo();
+      loadPanelDomainInfo();
+    }
+    if (state.activeTab === "mcp") loadMcpConfig();
+    if (state.activeTab === "devops") {
+      loadDevOpsStats();
+      loadDevOpsHistory(state.devopsHistoryRange, true);
+      startDevopsPolling();
+    } else if (prevTab === "devops") {
+      stopDevopsPolling();
+    }
+    render();
+  }
+
+  window.addEventListener("hashchange", () => {
+    const hash = (window.location.hash || "").replace("#", "").trim();
+    if (hash && VALID_TABS.includes(hash) && hash !== state.activeTab) {
+      switchTab(hash);
+    }
+  });
 
   async function loadApps() {
     try {
@@ -249,8 +414,18 @@
 
   async function loadMcpConfig() {
     try {
-      const res = await api("/api/mcp/config");
+      const [res, sec] = await Promise.all([
+        api("/api/mcp/config"),
+        api("/api/mcp/security").catch(() => null),
+      ]);
       state.mcpConfig = res;
+      if (sec && sec.config) {
+        state.mcpSecurity = sec.config;
+        state.mcpClientIp = sec.client_ip;
+      } else if (res && res.security) {
+        state.mcpSecurity = res.security;
+        state.mcpClientIp = res.client_ip;
+      }
       render();
     } catch (e) {
       toast("Falha ao carregar configuração MCP: " + e.message, "err");
@@ -505,6 +680,11 @@
 
   // ── Render Principal (Layout Hosteg com Sidebar) ───────────────
   function renderDashboard() {
+    const prevMain = app.querySelector(".main-viewport");
+    const prevScrollTop = prevMain ? prevMain.scrollTop : 0;
+    const prevSidebar = app.querySelector(".sidebar-menu");
+    const prevSidebarScroll = prevSidebar ? prevSidebar.scrollTop : 0;
+
     const baseInstalled = !!state.status?.base_installed;
     const ip = state.status?.public_ip || "—";
 
@@ -564,6 +744,12 @@
               <span class="menu-badge ${totalInstances > 0 ? "green" : ""}">${totalInstances}</span>
             </button>
 
+            <button class="menu-item ${state.activeTab === "devops" ? "active" : ""}" data-tab="devops">
+              <span class="menu-icon">⚡</span>
+              <span class="menu-label">Monitor DevOps</span>
+              ${state.devops ? `<span class="menu-pill ${state.devops.health === 'HEALTHY' ? 'green' : 'yellow'}">${state.devops.cpu.percent}%</span>` : '<span class="menu-pill green">htop</span>'}
+            </button>
+
             <button class="menu-item ${state.activeTab === "cloudflare" ? "active" : ""}" data-tab="cloudflare">
               <span class="menu-icon"><img src="/assets/cloudflare.svg" class="menu-svg-icon" alt="Cloudflare" /></span>
               <span class="menu-label">Cloudflare DNS</span>
@@ -584,15 +770,43 @@
           </nav>
 
           <div class="sidebar-footer">
-            <div class="server-status-card">
-              <div class="status-indicator">
-                <span class="dot online"></span>
-                <span>Servidor Online</span>
-              </div>
-              <div class="server-ip-box" title="Clique para copiar" onclick="navigator.clipboard.writeText('${ip}'); window.__toast('IP ${escapeHtml(ip)} copiado!', 'ok')">
-                <code>${escapeHtml(ip)}</code>
-                <span>📋</span>
-              </div>
+            ${(() => {
+              const dom = (state.panelDomain?.configured && state.panelDomain?.domain) ? state.panelDomain.domain : "";
+              return `
+                <div class="server-status-card">
+                  <div class="status-indicator">
+                    <span class="dot online"></span>
+                    <span>${dom ? "Painel com SSL (Traefik)" : "Servidor Online"}</span>
+                  </div>
+                  ${dom ? `
+                    <div class="server-ip-box" title="Clique para copiar domínio" onclick="navigator.clipboard.writeText('https://${escapeHtml(dom)}'); window.__toast('Domínio copiado!', 'ok')">
+                      <code style="font-size: 0.78rem;">🔒 ${escapeHtml(dom)}</code>
+                      <span>📋</span>
+                    </div>
+                  ` : `
+                    <div class="server-ip-box" title="Clique para copiar" onclick="navigator.clipboard.writeText('${ip}'); window.__toast('IP ${escapeHtml(ip)} copiado!', 'ok')">
+                      <code>${escapeHtml(ip)}</code>
+                      <span>📋</span>
+                    </div>
+                  `}
+              `;
+            })()}
+              ${state.devops ? `
+                <div class="sidebar-mini-devops" onclick="document.querySelector('[data-tab=devops]')?.click()" title="Clique para abrir Monitor DevOps">
+                  <div class="mini-devops-item">
+                    <span class="mini-devops-label">CPU</span>
+                    <span class="mini-devops-val">${state.devops.cpu.percent}%</span>
+                  </div>
+                  <div class="mini-devops-item">
+                    <span class="mini-devops-label">RAM</span>
+                    <span class="mini-devops-val">${state.devops.memory.percent}%</span>
+                  </div>
+                  <div class="mini-devops-item">
+                    <span class="mini-devops-label">DISCO</span>
+                    <span class="mini-devops-val">${state.devops.disk.percent}%</span>
+                  </div>
+                </div>
+              ` : ''}
             </div>
 
             <div class="sidebar-orion-credit">
@@ -619,6 +833,15 @@
 
     bindEvents();
     renderToast();
+
+    const newMain = app.querySelector(".main-viewport");
+    if (newMain && prevScrollTop > 0) {
+      newMain.scrollTop = prevScrollTop;
+    }
+    const newSidebar = app.querySelector(".sidebar-menu");
+    if (newSidebar && prevSidebarScroll > 0) {
+      newSidebar.scrollTop = prevSidebarScroll;
+    }
   }
 
   function renderTabContent(baseInstalled, filteredApps, totalInstances, ip) {
@@ -627,6 +850,9 @@
     }
     if (state.activeTab === "instances") {
       return renderInstancesTab(totalInstances);
+    }
+    if (state.activeTab === "devops") {
+      return renderDevOpsTab(ip);
     }
     if (state.activeTab === "cloudflare") {
       return renderCloudflareTab();
@@ -883,6 +1109,120 @@
     `;
   }
 
+  function renderPanelDomainCard() {
+    if (!state.panelDomain && !state.panelDomainLoading && state.token) {
+      setTimeout(() => loadPanelDomainInfo(), 10);
+    }
+    const pd = state.panelDomain || {};
+    const configured = !!pd.configured && !!pd.domain;
+    const domain = pd.domain || "";
+    const url = pd.url || (domain ? `https://${domain}` : "");
+    const sslActive = !!pd.ssl_active;
+    const dnsMatch = !!pd.dns_match;
+    const publicIp = pd.public_ip || state.status?.public_ip || "74.1.21.235";
+    const hasCf = !!state.cfConfigured || !!pd.has_cloudflare;
+
+    return `
+      <div class="panel-domain-card">
+        <div class="panel-domain-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.35rem;">
+              <span class="tool-icon">🌐</span>
+              <h3 style="margin: 0; font-size: 1.15rem; color: #fff;">Domínio Próprio & Traefik SSL do SetupImpa</h3>
+              <span class="panel-domain-badge ${configured ? "active" : "unconfigured"}">
+                ${configured ? "✔ Domínio Conectado" : "⚠️ Acesso por IP"}
+              </span>
+            </div>
+            <p class="panel-domain-help">
+              ${configured
+                ? "O painel SetupImpa está conectado diretamente ao Traefik v3 na porta 443 com certificado HTTPS gratuito e renovação automática (Let's Encrypt). A porta 8877 não fica mais exposta na VPS — apenas o Traefik fica exposto."
+                : "Conecte um domínio próprio (ex: <code>painel.meudominio.com</code>) para acessar o SetupImpa por HTTPS seguro, sem precisar usar o IP cru e a porta :8877."}
+            </p>
+          </div>
+        </div>
+
+        ${configured ? `
+          <div class="panel-domain-active-banner">
+            <div>
+              <span style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); display: block; margin-bottom: 0.2rem;">Endereço Seguro HTTPS:</span>
+              <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="panel-domain-url-link">
+                🔒 ${escapeHtml(url)} ↗
+              </a>
+              <div style="margin-top: 0.35rem; font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span>${dnsMatch ? "✔ DNS aponta para " + escapeHtml(publicIp) : "⚠️ DNS não aponta para " + escapeHtml(publicIp)}</span>
+                <span>·</span>
+                <span>${sslActive ? "✔ Certificado SSL Ativo" : "⏳ Traefik aguardando validação SSL"}</span>
+                <span>·</span>
+                <span style="color: ${pd.port_exposed !== false ? '#60a5fa' : '#c084fc'}; font-weight: 500;">
+                  ${pd.port_exposed !== false ? '⚡ Porta :8877 Ativa (IP Fallback)' : '🛡️ Porta :8877 Oculta (Apenas Traefik)'}
+                </span>
+              </div>
+              <div style="margin-top: 0.6rem; display: flex; align-items: center; gap: 0.5rem;">
+                <label style="display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-main); cursor: pointer;">
+                  <input type="checkbox" id="toggle-panel-port-exposure" ${pd.port_exposed !== false ? "checked" : ""} />
+                  <span>Manter porta <strong>:8877</strong> exposta como redundância por IP (emergência / contingência)</span>
+                </label>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.65rem; align-items: center; flex-wrap: wrap;">
+              <button class="btn-copy-chip" onclick="navigator.clipboard.writeText('${escapeHtml(url)}'); window.__toast('URL copiada!', 'ok')">
+                📋 Copiar Link
+              </button>
+              <button class="btn-table-action" id="btn-check-panel-domain" style="font-size: 0.82rem; padding: 0.45rem 0.8rem;" ${state.panelDomainLoading ? "disabled" : ""}>
+                🔄 Checar DNS / SSL
+              </button>
+              <button class="btn-table-action" id="btn-remove-panel-domain" style="color: #f87171; border-color: rgba(239,68,68,0.3);" ${state.panelDomainLoading ? "disabled" : ""}>
+                ${state.panelDomainLoading ? "Removendo..." : "Desconectar"}
+              </button>
+            </div>
+          </div>
+
+          ${!dnsMatch ? `
+            <div style="padding: 0.9rem 1.15rem; border-radius: var(--radius-sm); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.85rem; color: #fbbf24; line-height: 1.55;">
+              <strong style="color: #fde68a;">⚠️ Apontamento DNS pendente para ${escapeHtml(domain)}:</strong><br/>
+              O domínio ainda não está apontando para o IP desta VPS (<code>${escapeHtml(publicIp)}</code>).<br/>
+              ${pd.cf_result && !pd.cf_result.ok ? `<div style="margin: 0.35rem 0; color: #fca5a5; font-size: 0.82rem;">❌ Cloudflare API: ${escapeHtml(pd.cf_result.error || "Token sem permissão Zone:DNS:Edit")}</div>` : ""}
+              Acesse sua Cloudflare ou gerenciador de DNS e crie um <strong>Registro tipo A</strong>:<br/>
+              • <strong>Nome/Host:</strong> <code>${escapeHtml(domain.split('.')[0])}</code><br/>
+              • <strong>Destino (IPv4):</strong> <code>${escapeHtml(publicIp)}</code><br/>
+              • <strong>Proxy Cloudflare:</strong> <code>Desativado (Nuvem Cinza / DNS Only)</code> para o Traefik gerar o certificado SSL.<br/>
+              Depois de criar o apontamento, clique em <strong>Checar DNS / SSL</strong> acima!
+            </div>
+          ` : (!sslActive ? `
+            <div style="padding: 0.85rem 1.15rem; border-radius: var(--radius-sm); background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); font-size: 0.85rem; color: #93c5fd; line-height: 1.5;">
+              <strong>✔ DNS apontado com sucesso!</strong> O Traefik v3 está validando o desafio ACME Let's Encrypt para emitir o certificado HTTPS na porta 443. Isso leva de 10 a 60 segundos. Clique em "Checar DNS / SSL" para atualizar o status.
+            </div>
+          ` : "")}
+        ` : `
+          <div class="panel-domain-form">
+            <div class="panel-domain-form-row">
+              <input
+                type="text"
+                class="panel-domain-input"
+                id="panel-domain-input"
+                placeholder="Ex: painel.meudominio.com"
+                value="${escapeHtml(domain)}"
+              />
+              <button class="btn-hosteg-primary" id="btn-save-panel-domain" ${state.panelDomainLoading ? "disabled" : ""}>
+                ${state.panelDomainLoading ? "Configurando Traefik..." : "🔒 Conectar e Ativar SSL"}
+              </button>
+            </div>
+
+            <div style="margin-top: 0.85rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+              <label style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.84rem; color: var(--text-muted); cursor: pointer;">
+                <input type="checkbox" id="panel-domain-auto-cf" ${hasCf ? "checked" : ""} />
+                <span>Criar apontamento DNS tipo A na Cloudflare automaticamente</span>
+              </label>
+              <span style="font-size: 0.8rem; color: var(--text-dim);">
+                IP de Apontamento: <code>${escapeHtml(publicIp)}</code>
+              </span>
+            </div>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
   // ── Tab: Base do Servidor ────────────────────────────────────────
   function renderBaseTab(baseInstalled, ip) {
     const info = state.baseInfo || {};
@@ -933,6 +1273,9 @@
           </button>
         </div>
       </div>
+
+      <!-- Domínio Próprio & Traefik SSL do SetupImpa -->
+      ${renderPanelDomainCard()}
 
       ${baseInstalled && portainerUrl ? `
         <!-- Painel Técnico & Portainer (Acesso Direto sem SFTP) -->
@@ -1017,20 +1360,36 @@
 
   function renderMcpTab(ip) {
     const cfg = state.mcpConfig || {};
+    const sec = state.mcpSecurity || cfg.security || {};
     const key = cfg.mcp_api_key || "Carregando chave...";
-    const sseUrl = cfg.sse_url || (ip ? `http://${ip}:8877/mcp/sse?token=${key}` : "");
+    const domainActive = Boolean(cfg.domain_active || (state.panelDomain?.configured && state.panelDomain?.domain));
+    const activeDomain = cfg.domain || state.panelDomain?.domain || "";
+    const portExposed = cfg.port_exposed !== false;
+
+    // Seletor de endpoint: "domain" vs "ip" (Fallback)
+    const selectedMode = state.mcpEndpointMode || (domainActive ? "domain" : "ip");
+
+    const domainBase = (domainActive && activeDomain) ? `https://${activeDomain}` : "";
+    const ipBase = ip ? `http://${ip}:8877` : "";
+
+    const domainSseUrl = domainBase ? `${domainBase}/mcp/sse?token=${key}` : "";
+    const ipSseUrl = ipBase ? `${ipBase}/mcp/sse?token=${key}` : "";
+
+    const activeSseUrl = (selectedMode === "domain" && domainSseUrl) ? domainSseUrl : (ipSseUrl || domainSseUrl);
+    const activeBaseUrl = (selectedMode === "domain" && domainBase) ? domainBase : (ipBase || domainBase);
+
     const activeSnippet = state.mcpActiveSnippetTab || "cursor";
 
     const isVisible = Boolean(state.showMcpKey);
     const maskedToken = "••••••••••••••••••••••••••••••••••••••";
     const displaySseUrl = isVisible
-      ? sseUrl
-      : (ip ? `http://${ip}:8877/mcp/sse?token=${maskedToken}` : "");
+      ? activeSseUrl
+      : (activeSseUrl ? activeSseUrl.replace(/token=[^"'\s&]+/, `token=${maskedToken}`) : "");
 
     const snippetKey = isVisible ? key : maskedToken;
     const snippetSseUrl = isVisible
-      ? sseUrl
-      : (sseUrl ? sseUrl.replace(/token=[^"'\s&]+/, `token=${maskedToken}`) : "");
+      ? activeSseUrl
+      : (activeSseUrl ? activeSseUrl.replace(/token=[^"'\s&]+/, `token=${maskedToken}`) : "");
 
     const cursorSnippet = JSON.stringify({
       "mcpServers": {
@@ -1055,7 +1414,7 @@
       "token": snippetKey
     }, null, 2);
 
-    const cliSnippet = `python -m mcp.cli --url http://${ip}:8877 --token ${snippetKey}`;
+    const cliSnippet = `python -m mcp.cli --url ${activeBaseUrl} --token ${snippetKey}`;
 
     let currentSnippet = cursorSnippet;
     if (activeSnippet === "claude") currentSnippet = claudeSnippet;
@@ -1074,9 +1433,21 @@
         <div class="mcp-status-banner">
           <div class="mcp-status-pulse"></div>
           <div style="flex: 1;">
-            <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
               <span class="mcp-title-badge">MCP SERVER NATIVO ATIVO</span>
-              <span class="mcp-pill green">Porta :8877 Online</span>
+              ${domainActive ? `
+                <span class="mcp-pill green">🔒 Traefik SSL Ativo</span>
+                <span class="mcp-pill ${portExposed ? 'blue' : 'purple'}" title="${portExposed ? 'A porta 8877 está acessível como IP Fallback de emergência' : 'A porta 8877 está oculta do host'}">
+                  🛡️ Porta :8877 ${portExposed ? 'Ativa (IP Fallback)' : 'Oculta'}
+                </span>
+              ` : `
+                <span class="mcp-pill green">Porta :8877 Online</span>
+              `}
+              ${sec.ip_whitelist_enabled ? `
+                <span class="mcp-pill green" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4);">🛡️ Whitelist de IP Ativa</span>
+              ` : `
+                <span class="mcp-pill blue" style="opacity: 0.85;">Chave de Acesso Ativa</span>
+              `}
               <span class="mcp-pill blue">16 Ferramentas</span>
             </div>
             <p class="mcp-status-desc">
@@ -1100,12 +1471,94 @@
           </div>
 
           <div class="mcp-field-group">
-            <label class="mcp-label">Endpoint Oficial SSE (Server-Sent Events)</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.25rem;">
+              <label class="mcp-label">Endpoint Oficial SSE do Model Context Protocol</label>
+              <div style="display: flex; gap: 0.35rem;">
+                ${domainActive ? `
+                  <button type="button" class="btn-endpoint-choice ${selectedMode === 'domain' ? 'active' : ''}" data-endpoint-mode="domain" style="padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); ${selectedMode === 'domain' ? 'background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981;' : 'background: rgba(255,255,255,0.04); color: var(--text-muted);'}">
+                    🔒 Domínio SSL (Recomendado)
+                  </button>
+                ` : ''}
+                <button type="button" class="btn-endpoint-choice ${selectedMode === 'ip' ? 'active' : ''}" data-endpoint-mode="ip" style="padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); ${selectedMode === 'ip' ? 'background: rgba(59, 130, 246, 0.2); color: #60a5fa; border-color: #3b82f6;' : 'background: rgba(255,255,255,0.04); color: var(--text-muted);'}">
+                  ⚡ IP Direto :8877 (Fallback)
+                </button>
+              </div>
+            </div>
+
             <div class="mcp-input-box">
               <input type="text" readonly value="${escapeHtml(displaySseUrl)}" id="mcp-sse-input" class="mcp-input-code" />
-              <button class="btn-copy-mini" id="btn-copy-mcp-sse" title="Copiar URL SSE">📋 Copiar URL</button>
+              <button class="btn-copy-mini" id="btn-copy-mcp-sse" title="Copiar Endpoint SSE">📋 Copiar URL</button>
             </div>
+            <span class="mcp-hint">
+              ${selectedMode === 'domain'
+                ? 'Tráfego criptografado por TLS/HTTPS na porta 443 via Traefik. O IP direto continua disponível como redundância de emergência.'
+                : 'Acesso direto via IP e porta :8877. Excelente redundância para contingências ou caso o domínio sofra instabilidades temporárias.'}
+            </span>
           </div>
+        </div>
+      </div>
+
+      <!-- Card de Defesa Rígida & Whitelist de IPs (Firewall do MCP) -->
+      <div class="mcp-config-card" style="margin-top: 1.25rem;">
+        <div class="mcp-config-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h3 style="display: flex; align-items: center; gap: 0.5rem; font-size: 1.05rem;">
+              <span>🛡️</span> Defesa Rígida & Whitelist de IPs (Firewall do MCP)
+            </h3>
+            <p style="margin-top: 0.25rem;">
+              Defina quais endereços IP têm autorização para se comunicar com o MCP. Se a whitelist estiver ativa, qualquer requisição de outro IP será bloqueada com <strong>403 Forbidden</strong> antes de processar qualquer instrução.
+            </p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span style="font-size: 0.8rem; font-weight: 600; color: ${sec.ip_whitelist_enabled ? '#34d399' : 'var(--text-muted)'};">
+              ${sec.ip_whitelist_enabled ? '● Whitelist Ativa' : '○ Acesso por Chave (Whitelist Desativada)'}
+            </span>
+            <button type="button" class="btn-hosteg-sm" id="btn-toggle-mcp-whitelist" style="background: ${sec.ip_whitelist_enabled ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'}; color: ${sec.ip_whitelist_enabled ? '#f87171' : '#34d399'}; border: 1px solid ${sec.ip_whitelist_enabled ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'};">
+              ${sec.ip_whitelist_enabled ? 'Desativar Whitelist' : 'Ativar Proteção por IP'}
+            </button>
+          </div>
+        </div>
+
+        <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; margin-top: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div style="font-size: 0.85rem; color: var(--text-main);">
+              IP do seu dispositivo detectado:
+              <code style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; margin-left: 0.3rem;">
+                ${escapeHtml(state.mcpClientIp || "detectando...")}
+              </code>
+            </div>
+            <button type="button" class="btn-copy-mini" id="btn-add-my-ip" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+              ➕ Adicionar Meu IP à Whitelist
+            </button>
+          </div>
+
+          <div class="mcp-field-group">
+            <label class="mcp-label">Lista de IPs ou Blocos CIDR Permitidos (separados por vírgula ou linha):</label>
+            <textarea id="mcp-allowed-ips-input" class="mcp-input-code" style="width: 100%; min-height: 70px; resize: vertical; line-height: 1.4;" placeholder="Exemplo: 177.20.10.5, 201.88.0.0/16, 10.0.0.0/8">${escapeHtml((sec.allowed_ips || []).join('\n'))}</textarea>
+            <span class="mcp-hint">
+              Suporta IPs individuais (ex: <code>187.54.21.90</code>) ou faixas de rede CIDR (ex: <code>187.54.0.0/16</code>). O localhost (127.0.0.1) é sempre permitido.
+            </span>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.85rem;">
+            ${(cfg.domain && state.panelDomain?.has_cloudflare) ? `
+              <button type="button" class="btn-copy-mini" id="btn-sync-cloudflare-waf" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3);" title="Cria regra no Firewall de Borda da Cloudflare">
+                ☁️ Sincronizar com Cloudflare WAF
+              </button>
+            ` : ''}
+            <button type="button" class="btn-hosteg-primary" id="btn-save-mcp-security">
+              💾 Salvar Regras de Firewall
+            </button>
+          </div>
+        </div>
+
+        <div style="margin-top: 0.85rem; padding: 0.75rem 1rem; background: rgba(59, 130, 246, 0.06); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">
+          <strong>💡 Estratégia de Defesa Recomendada (Borda VPS + Agente):</strong>
+          <ul style="margin-left: 1.25rem; margin-top: 0.3rem;">
+            <li><strong>Firewall de Borda da VPS (Hostinger, Hetzner, etc.):</strong> No painel da sua VPS, você pode configurar o firewall de borda para fechar a porta <code>8877</code> para o mundo e liberar exclusivamente para o seu IP.</li>
+            <li><strong>Cloudflare WAF:</strong> Se o domínio estiver proxied na Cloudflare, você pode criar regras de WAF restringindo <code>/mcp/*</code> aos seus IPs.</li>
+            <li><strong>Defesa do Agente SetupImpa:</strong> Ao ativar a Whitelist acima, o próprio agente SetupImpa filtra cada requisição e rejeita qualquer IP não autorizado na porta 8877 e no domínio Traefik.</li>
+          </ul>
         </div>
       </div>
 
@@ -1336,20 +1789,791 @@
     `;
   }
 
+  // ── Tab: Monitor DevOps (htop visual) ───────────────────────────
+  function renderContainersRows(containers, q) {
+    const query = (q || "").trim().toLowerCase();
+    const filtered = query
+      ? containers.filter(c =>
+          (c.name || "").toLowerCase().includes(query) ||
+          (c.clean_name || "").toLowerCase().includes(query) ||
+          (c.stack || "").toLowerCase().includes(query) ||
+          (c.image || "").toLowerCase().includes(query)
+        )
+      : containers;
+
+    if (filtered.length === 0) {
+      return `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--text-dim);">
+            Nenhum container encontrado para o filtro digitado.
+          </td>
+        </tr>
+      `;
+    }
+
+    return filtered.map(c => `
+      <tr>
+        <td>
+          <span class="stack-tag ${escapeHtml(c.stack)}">${escapeHtml(c.stack)}</span>
+        </td>
+        <td>
+          <div class="c-name-col">
+            <span class="c-clean-name">${escapeHtml(c.clean_name)}</span>
+            <span class="c-raw-name">${escapeHtml(c.name)}</span>
+          </div>
+        </td>
+        <td>
+          <span class="menu-pill green">● ${escapeHtml(c.status)}</span>
+        </td>
+        <td>
+          <div class="c-metric-cell">
+            <span class="c-metric-val">${escapeHtml(c.cpu_str || "0.0%")}</span>
+            <div class="c-mini-bar">
+              <div class="c-mini-fill cpu ${c.cpu_pct > 60 ? "high" : ""}" style="width: ${Math.min(100, Math.max(1, c.cpu_pct * 3))}%"></div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="c-metric-cell">
+            <span class="c-metric-val">${escapeHtml(c.mem_str || "-")}</span>
+            <div class="c-mini-bar">
+              <div class="c-mini-fill mem ${c.mem_pct > 70 ? "high" : ""}" style="width: ${Math.min(100, Math.max(1, c.mem_pct))}%"></div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem;">${escapeHtml(c.net_str || "-")}</span>
+        </td>
+        <td>
+          <code class="c-image-code" title="${escapeHtml(c.image)}">${escapeHtml(c.image)}</code>
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  function updateDevOpsDOM(d) {
+    if (!d) return;
+
+    // 1. Sidebar pill & mini devops
+    const menuPill = app.querySelector("[data-tab=devops] .menu-pill");
+    if (menuPill && d.cpu) {
+      menuPill.textContent = d.cpu.percent + "%";
+      menuPill.className = "menu-pill " + (d.health === "HEALTHY" ? "green" : "yellow");
+    }
+
+    const miniDevops = app.querySelector(".sidebar-mini-devops");
+    if (miniDevops) {
+      const vals = miniDevops.querySelectorAll(".mini-devops-val");
+      if (vals.length >= 3) {
+        vals[0].textContent = (d.cpu ? d.cpu.percent : 0) + "%";
+        vals[1].textContent = (d.memory ? d.memory.percent : 0) + "%";
+        vals[2].textContent = (d.disk ? d.disk.percent : 0) + "%";
+      }
+    }
+
+    // If not currently on devops tab, we are done!
+    if (state.activeTab !== "devops") return;
+
+    const cpu = d.cpu || {};
+    const mem = d.memory || {};
+    const disk = d.disk || {};
+    const sys = d.system || {};
+    const containers = d.containers || [];
+
+    // CPU status tag
+    let cpuTag = "ok";
+    let cpuTagText = "Normal";
+    if (cpu.percent > 85) { cpuTag = "crit"; cpuTagText = "Crítico"; }
+    else if (cpu.percent > 65) { cpuTag = "warn"; cpuTagText = "Elevado"; }
+
+    // RAM status tag
+    let memTag = "ok";
+    let memTagText = "Ótimo";
+    if (mem.percent > 88) { memTag = "crit"; memTagText = "Alerta"; }
+    else if (mem.percent > 70) { memTag = "warn"; memTagText = "Atenção"; }
+
+    // Disk status tag
+    let diskTag = "ok";
+    let diskTagText = "Livre";
+    if (disk.percent > 85) { diskTag = "crit"; diskTagText = "Quase Cheio"; }
+    else if (disk.percent > 70) { diskTag = "warn"; diskTagText = "Moderado"; }
+
+    const memTotal = mem.total_mb || 1;
+    const usedPct = Math.min(100, Math.max(0, (mem.used_mb / memTotal) * 100));
+    const cachedPct = Math.min(100 - usedPct, Math.max(0, (mem.cached_mb / memTotal) * 100));
+
+    // Update CPU Card
+    const cpuTagEl = document.getElementById("devops-cpu-tag");
+    if (cpuTagEl) { cpuTagEl.className = "devops-card-tag " + cpuTag; cpuTagEl.textContent = cpuTagText; }
+    const cpuValEl = document.getElementById("devops-cpu-val");
+    if (cpuValEl) cpuValEl.textContent = cpu.percent + "%";
+    const cpuBarEl = document.getElementById("devops-cpu-bar");
+    if (cpuBarEl) {
+      cpuBarEl.style.width = Math.min(100, Math.max(2, cpu.percent)) + "%";
+      cpuBarEl.className = "devops-bar-fill cpu " + (cpu.percent > 70 ? "high" : "");
+    }
+    const cpuLoadEl = document.getElementById("devops-cpu-load");
+    if (cpuLoadEl && cpu.load_average) {
+      cpuLoadEl.textContent = `${cpu.load_average["1m"]} · ${cpu.load_average["5m"]} · ${cpu.load_average["15m"]}`;
+    }
+
+    // Update RAM Card
+    const memTagEl = document.getElementById("devops-mem-tag");
+    if (memTagEl) { memTagEl.className = "devops-card-tag " + memTag; memTagEl.textContent = memTagText; }
+    const memValEl = document.getElementById("devops-mem-val");
+    if (memValEl) memValEl.textContent = mem.percent + "%";
+    const memSubEl = document.getElementById("devops-mem-sub");
+    if (memSubEl) memSubEl.textContent = `${(mem.used_mb / 1024).toFixed(1)} / ${(mem.total_mb / 1024).toFixed(1)} GB`;
+    const segUsed = document.getElementById("devops-seg-used");
+    if (segUsed) segUsed.style.width = usedPct + "%";
+    const segCached = document.getElementById("devops-seg-cached");
+    if (segCached) segCached.style.width = cachedPct + "%";
+    const memUsedVal = document.getElementById("devops-mem-used-val");
+    if (memUsedVal) memUsedVal.textContent = mem.used_mb + " MB";
+    const memCachedVal = document.getElementById("devops-mem-cached-val");
+    if (memCachedVal) memCachedVal.textContent = mem.cached_mb + " MB";
+    const memFreeVal = document.getElementById("devops-mem-free-val");
+    if (memFreeVal) memFreeVal.textContent = mem.free_mb + " MB";
+    const memSwapVal = document.getElementById("devops-mem-swap-val");
+    if (memSwapVal) {
+      memSwapVal.textContent = mem.swap_total_mb > 0 ? `${mem.swap_used_mb} / ${mem.swap_total_mb} MB (${mem.swap_percent}%)` : "Desativado";
+    }
+
+    // Update Disk Card
+    const diskTagEl = document.getElementById("devops-disk-tag");
+    if (diskTagEl) { diskTagEl.className = "devops-card-tag " + diskTag; diskTagEl.textContent = diskTagText; }
+    const diskValEl = document.getElementById("devops-disk-val");
+    if (diskValEl) diskValEl.textContent = disk.percent + "%";
+    const diskSubEl = document.getElementById("devops-disk-sub");
+    if (diskSubEl) diskSubEl.textContent = `${disk.used_gb} / ${disk.total_gb} GB`;
+    const diskBarEl = document.getElementById("devops-disk-bar");
+    if (diskBarEl) diskBarEl.style.width = Math.min(100, Math.max(2, disk.percent)) + "%";
+    const diskUsedVal = document.getElementById("devops-disk-used-val");
+    if (diskUsedVal) diskUsedVal.textContent = disk.used_gb + " GB";
+    const diskFreeVal = document.getElementById("devops-disk-free-val");
+    if (diskFreeVal) diskFreeVal.textContent = disk.free_gb + " GB";
+
+    // Update Swarm Card
+    const cCountEl = document.getElementById("devops-containers-count");
+    if (cCountEl) cCountEl.textContent = containers.length;
+    const uptimeEl = document.getElementById("devops-host-uptime");
+    if (uptimeEl && sys.uptime) uptimeEl.textContent = sys.uptime.human;
+
+    // Update Alert Banner
+    const alertBanner = document.getElementById("devops-alert-banner");
+    const alertText = document.getElementById("devops-alert-text");
+    if (alertBanner && alertText) {
+      if (d.warnings && d.warnings.length > 0) {
+        alertText.innerHTML = d.warnings.map(escapeHtml).join(" · ");
+        alertBanner.style.display = "";
+      } else {
+        alertBanner.style.display = "none";
+      }
+    }
+
+    // Update Containers Table
+    const tbody = document.getElementById("devops-containers-tbody");
+    if (tbody) {
+      const qInput = document.getElementById("devops-filter-input");
+      const currentQ = qInput ? qInput.value : state.devopsSearch;
+      tbody.innerHTML = renderContainersRows(containers, currentQ);
+
+      const countPill = document.getElementById("devops-table-count");
+      if (countPill) {
+        const query = (currentQ || "").trim().toLowerCase();
+        const fCount = query
+          ? containers.filter(c =>
+              (c.name || "").toLowerCase().includes(query) ||
+              (c.clean_name || "").toLowerCase().includes(query) ||
+              (c.stack || "").toLowerCase().includes(query) ||
+              (c.image || "").toLowerCase().includes(query)
+            ).length
+          : containers.length;
+        countPill.textContent = `${fCount} de ${containers.length}`;
+      }
+    }
+  }
+
+  function generateHistorySvg(points, selectedMetric) {
+    if (!points || points.length === 0) {
+      return `
+        <div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-dim);">
+          <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">📊</div>
+          <p>Coletando telemetria em segundo plano...</p>
+        </div>
+      `;
+    }
+
+    const W = 1000;
+    const H = 220;
+    const padL = 42;
+    const padR = 20;
+    const padT = 16;
+    const padB = 28;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    const getY = (val) => padT + plotH - ((Math.min(100, Math.max(0, val)) / 100) * plotH);
+    const getX = (idx) => padL + (idx / Math.max(1, points.length - 1)) * plotW;
+
+    const buildPath = (key) => {
+      return points.map((p, i) => `${i === 0 ? "M" : "L"} ${getX(i).toFixed(1)} ${getY(p[key] || 0).toFixed(1)}`).join(" ");
+    };
+
+    const buildAreaPath = (key) => {
+      const line = buildPath(key);
+      const lastX = getX(points.length - 1).toFixed(1);
+      const firstX = getX(0).toFixed(1);
+      const bottomY = (padT + plotH).toFixed(1);
+      return `${line} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
+    };
+
+    const gridLines = [0, 25, 50, 75, 100].map(pct => {
+      const y = getY(pct);
+      return `
+        <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 3" />
+        <text x="${padL - 8}" y="${y + 3.5}" fill="rgba(255,255,255,0.3)" font-size="10" text-anchor="end" font-family="monospace">${pct}%</text>
+      `;
+    }).join("");
+
+    const step = Math.max(1, Math.floor(points.length / 7));
+    const timeLabels = points.filter((_, i) => i % step === 0 || i === points.length - 1).map((p) => {
+      const idx = points.indexOf(p);
+      const x = getX(idx);
+      return `<text x="${x}" y="${H - 6}" fill="rgba(255,255,255,0.45)" font-size="10" text-anchor="middle" font-family="monospace">${escapeHtml(p.time)}</text>`;
+    }).join("");
+
+    let pathsSvg = "";
+    if (selectedMetric === "all" || selectedMetric === "cpu") {
+      pathsSvg += `
+        <defs>
+          <linearGradient id="grad-cpu-hist" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0"/>
+          </linearGradient>
+        </defs>
+        <path d="${buildAreaPath("cpu")}" fill="url(#grad-cpu-hist)" />
+        <path d="${buildPath("cpu")}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      `;
+    }
+    if (selectedMetric === "all" || selectedMetric === "memory") {
+      pathsSvg += `
+        <defs>
+          <linearGradient id="grad-mem-hist" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#a855f7" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#a855f7" stop-opacity="0.0"/>
+          </linearGradient>
+        </defs>
+        <path d="${buildAreaPath("memory")}" fill="url(#grad-mem-hist)" />
+        <path d="${buildPath("memory")}" fill="none" stroke="#a855f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      `;
+    }
+    if (selectedMetric === "all" || selectedMetric === "disk") {
+      pathsSvg += `
+        <path d="${buildPath("disk")}" fill="none" stroke="#34d399" stroke-width="2" stroke-dasharray="4 2" stroke-linecap="round" />
+      `;
+    }
+
+    const interactiveDots = points.filter((_, i) => i % Math.max(1, Math.floor(points.length / 24)) === 0).map((p) => {
+      const idx = points.indexOf(p);
+      const x = getX(idx);
+      const yKey = selectedMetric === "memory" ? "memory" : (selectedMetric === "disk" ? "disk" : "cpu");
+      const dotY = getY(p[yKey] || 0);
+      const dotColor = selectedMetric === "memory" ? "#a855f7" : (selectedMetric === "disk" ? "#34d399" : "#38bdf8");
+      const titleText = `${p.time} — CPU: ${p.cpu}% | RAM: ${p.memory}% | Disco: ${p.disk}%`;
+      return `
+        <circle cx="${x}" cy="${dotY}" r="4" fill="${dotColor}" stroke="#0b0f19" stroke-width="2" class="chart-point">
+          <title>${titleText}</title>
+        </circle>
+      `;
+    }).join("");
+
+    return `
+      <svg viewBox="0 0 ${W} ${H}" class="devops-history-svg" preserveAspectRatio="none">
+        ${gridLines}
+        ${timeLabels}
+        ${pathsSvg}
+        ${interactiveDots}
+      </svg>
+    `;
+  }
+
+  function renderDevOpsHistoryCard() {
+    if (!state.devopsHistory && !state.devopsHistoryLoading && state.token) {
+      setTimeout(() => loadDevOpsHistory(state.devopsHistoryRange, true), 10);
+    }
+    const hist = state.devopsHistory || {};
+    const points = hist.points || [];
+    const summary = hist.summary || {};
+    const range = state.devopsHistoryRange || "24h";
+    const metric = state.devopsHistoryMetric || "all";
+
+    const targetStat = metric === "memory" ? summary.memory : (metric === "disk" ? summary.disk : summary.cpu);
+    const statTitle = metric === "memory" ? "Memória RAM" : (metric === "disk" ? "Armazenamento SSD" : "Processamento CPU");
+    const statUnit = "%";
+
+    const maxVal = targetStat?.max ?? 0;
+    const avgVal = targetStat?.avg ?? 0;
+    const minVal = targetStat?.min ?? 0;
+    const curVal = targetStat?.current ?? 0;
+
+    return `
+      <div class="devops-history-card">
+        <div class="devops-history-header">
+          <div class="devops-history-title-group">
+            <span class="tool-icon">📈</span>
+            <div class="devops-history-title">
+              Tendências & Histórico de Recursos
+              <span class="devops-count-pill">${points.length} amostras</span>
+            </div>
+          </div>
+
+          <div class="devops-history-controls">
+            <!-- Metric Toggle -->
+            <div class="devops-btn-group">
+              <button class="devops-btn-pill ${metric === "all" ? "active" : ""}" data-history-metric="all">Geral</button>
+              <button class="devops-btn-pill ${metric === "cpu" ? "active" : ""}" data-history-metric="cpu">CPU</button>
+              <button class="devops-btn-pill ${metric === "memory" ? "active" : ""}" data-history-metric="memory">RAM</button>
+              <button class="devops-btn-pill ${metric === "disk" ? "active" : ""}" data-history-metric="disk">Disco</button>
+            </div>
+
+            <!-- Time Range Toggle -->
+            <div class="devops-btn-group">
+              <button class="devops-btn-pill ${range === "1h" ? "active" : ""}" data-history-range="1h">1h</button>
+              <button class="devops-btn-pill ${range === "2h" ? "active" : ""}" data-history-range="2h">2h</button>
+              <button class="devops-btn-pill ${range === "24h" ? "active" : ""}" data-history-range="24h">24h</button>
+              <button class="devops-btn-pill ${range === "7d" ? "active" : ""}" data-history-range="7d">7 dias</button>
+              <button class="devops-btn-pill ${range === "30d" ? "active" : ""}" data-history-range="30d">30 dias</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metric Stat Badges -->
+        <div class="devops-history-stats-row">
+          <div class="history-stat-badge">
+            <span class="history-stat-label">Pico Máximo (${statTitle})</span>
+            <span class="history-stat-val" style="color: #f87171;">${maxVal}${statUnit}</span>
+          </div>
+          <div class="history-stat-badge">
+            <span class="history-stat-label">Média no Período</span>
+            <span class="history-stat-val" style="color: #38bdf8;">${avgVal}${statUnit}</span>
+          </div>
+          <div class="history-stat-badge">
+            <span class="history-stat-label">Mínimo Registrado</span>
+            <span class="history-stat-val" style="color: #34d399;">${minVal}${statUnit}</span>
+          </div>
+          <div class="history-stat-badge">
+            <span class="history-stat-label">Nível Atual</span>
+            <span class="history-stat-val" style="color: #ffffff;">${curVal}${statUnit}</span>
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="devops-history-legend">
+          <div class="legend-item" data-history-metric="cpu">
+            <span class="legend-dot cpu"></span>
+            <strong>CPU (%)</strong>
+          </div>
+          <div class="legend-item" data-history-metric="memory">
+            <span class="legend-dot mem"></span>
+            <strong>Memória RAM (%)</strong>
+          </div>
+          <div class="legend-item" data-history-metric="disk">
+            <span class="legend-dot disk"></span>
+            <strong>Armazenamento SSD (%)</strong>
+          </div>
+          <span style="margin-left: auto; font-size: 0.76rem; color: var(--text-dim);">Passe o mouse nos pontos para ver hora e percentuais exatos</span>
+        </div>
+
+        <!-- Chart Area -->
+        <div class="devops-history-svg-wrap">
+          ${generateHistorySvg(points, metric)}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDevOpsTab(ip) {
+    const d = state.devops;
+    if (!d) {
+      return `
+        <div class="devops-container">
+          <div class="devops-header">
+            <div class="devops-title-group">
+              <div class="devops-badge-title"><span class="pulse-dot"></span> TELEMETRIA AO VIVO</div>
+              <h2>⚡ Monitor DevOps & Infraestrutura</h2>
+              <p class="devops-subtitle">Carregando métricas de hardware e containers Docker...</p>
+            </div>
+          </div>
+          <div style="padding: 4rem 2rem; text-align: center; color: var(--text-dim);">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem; animation: pulse-glow 1.5s infinite;">⚡</div>
+            <p>Conectando ao sistema operacional e coletando estatísticas htop...</p>
+          </div>
+        </div>
+      `;
+    }
+
+    const cpu = d.cpu || {};
+    const mem = d.memory || {};
+    const disk = d.disk || {};
+    const sys = d.system || {};
+    const swarm = d.swarm || {};
+    const containers = d.containers || [];
+
+    // Filter containers if search text present
+    const q = (state.devopsSearch || "").trim().toLowerCase();
+    const filteredContainers = q
+      ? containers.filter(c =>
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.clean_name || "").toLowerCase().includes(q) ||
+          (c.stack || "").toLowerCase().includes(q) ||
+          (c.image || "").toLowerCase().includes(q)
+        )
+      : containers;
+
+    // CPU status tag
+    let cpuTag = "ok";
+    let cpuTagText = "Normal";
+    if (cpu.percent > 85) { cpuTag = "crit"; cpuTagText = "Crítico"; }
+    else if (cpu.percent > 65) { cpuTag = "warn"; cpuTagText = "Elevado"; }
+
+    // RAM status tag
+    let memTag = "ok";
+    let memTagText = "Ótimo";
+    if (mem.percent > 88) { memTag = "crit"; memTagText = "Alerta"; }
+    else if (mem.percent > 70) { memTag = "warn"; memTagText = "Atenção"; }
+
+    // Disk status tag
+    let diskTag = "ok";
+    let diskTagText = "Livre";
+    if (disk.percent > 85) { diskTag = "crit"; diskTagText = "Quase Cheio"; }
+    else if (disk.percent > 70) { diskTag = "warn"; diskTagText = "Moderado"; }
+
+    // Segmented RAM calculation
+    const memTotal = mem.total_mb || 1;
+    const usedPct = Math.min(100, Math.max(0, (mem.used_mb / memTotal) * 100));
+    const cachedPct = Math.min(100 - usedPct, Math.max(0, (mem.cached_mb / memTotal) * 100));
+
+    return `
+      <div class="devops-container">
+        <div class="devops-header">
+          <div class="devops-title-group">
+            <div class="devops-badge-title">
+              <span class="pulse-dot"></span>
+              TELEMETRIA AO VIVO (HTOP VISUAL)
+            </div>
+            <h2>⚡ Monitor DevOps & Infraestrutura</h2>
+            <p class="devops-subtitle">Visão executiva em tempo real de hardware, consumo de CPU/RAM, armazenamento e containers Docker Swarm.</p>
+          </div>
+          <div class="devops-controls">
+            <button class="btn-devops-toggle ${state.devopsAutoRefresh ? "active" : ""}" id="btn-toggle-devops-refresh" title="Alternar atualização automática a cada 3.5s">
+              ${state.devopsAutoRefresh ? "🟢 Auto-refresh (3.5s)" : "⏸️ Pausado"}
+            </button>
+            <button class="btn-devops-refresh" id="btn-refresh-devops" ${state.devopsLoading ? "disabled" : ""}>
+              ${state.devopsLoading ? "⏳ Atualizando..." : "🔄 Atualizar Agora"}
+            </button>
+          </div>
+        </div>
+
+        <div class="devops-alert-banner" id="devops-alert-banner" style="${d.warnings && d.warnings.length > 0 ? "" : "display:none;"}">
+          <span style="font-size: 1.4rem;">⚠️</span>
+          <div>
+            <strong>Atenção de Recursos:</strong>
+            <div id="devops-alert-text" style="margin-top: 0.2rem; font-size: 0.84rem;">${(d.warnings || []).map(escapeHtml).join(" · ")}</div>
+          </div>
+        </div>
+
+        <!-- 4 Metric Cards -->
+        <div class="devops-grid">
+          <!-- CPU Card -->
+          <div class="devops-card">
+            <div class="devops-card-top">
+              <span class="devops-card-label">🖥️ Processamento (CPU)</span>
+              <span class="devops-card-tag ${cpuTag}" id="devops-cpu-tag">${cpuTagText}</span>
+            </div>
+            <div class="devops-big-metric">
+              <span class="value" id="devops-cpu-val">${cpu.percent}%</span>
+              <span class="sub">/ 100%</span>
+            </div>
+            <div class="devops-bar-track" title="Uso atual da CPU: ${cpu.percent}%">
+              <div class="devops-bar-fill cpu ${cpu.percent > 70 ? "high" : ""}" id="devops-cpu-bar" style="width: ${Math.min(100, Math.max(2, cpu.percent))}%"></div>
+            </div>
+            <div class="devops-details-list">
+              <div class="devops-detail-row">
+                <span>Cores / vCPUs:</span>
+                <strong>${cpu.cores} núcleos</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>Load Average:</span>
+                <strong id="devops-cpu-load">${cpu.load_average ? `${cpu.load_average["1m"]} · ${cpu.load_average["5m"]} · ${cpu.load_average["15m"]}` : "-"}</strong>
+              </div>
+              <div class="devops-detail-row" style="margin-top: 0.2rem;">
+                <span style="font-size: 0.73rem; opacity: 0.8; word-break: break-all;">${escapeHtml(cpu.model || "CPU Host")}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RAM Card (Segmented htop) -->
+          <div class="devops-card">
+            <div class="devops-card-top">
+              <span class="devops-card-label">🧠 Memória RAM</span>
+              <span class="devops-card-tag ${memTag}" id="devops-mem-tag">${memTagText}</span>
+            </div>
+            <div class="devops-big-metric">
+              <span class="value" id="devops-mem-val">${mem.percent}%</span>
+              <span class="sub" id="devops-mem-sub">${(mem.used_mb / 1024).toFixed(1)} / ${(mem.total_mb / 1024).toFixed(1)} GB</span>
+            </div>
+            <div class="devops-segmented-bar" title="Usada: ${mem.used_mb}MB | Cache: ${mem.cached_mb}MB | Livre: ${mem.free_mb}MB">
+              <div class="seg-used" id="devops-seg-used" style="width: ${usedPct}%"></div>
+              <div class="seg-cached" id="devops-seg-cached" style="width: ${cachedPct}%"></div>
+            </div>
+            <div class="devops-details-list">
+              <div class="devops-detail-row">
+                <span><span style="color:#8b5cf6">■</span> Em Uso:</span>
+                <strong id="devops-mem-used-val">${mem.used_mb} MB</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span><span style="color:#3b82f6">■</span> Buffers / Cache:</span>
+                <strong id="devops-mem-cached-val">${mem.cached_mb} MB</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span><span style="color:#64748b">■</span> Disponível:</span>
+                <strong id="devops-mem-free-val">${mem.free_mb} MB</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>Swap:</span>
+                <strong id="devops-mem-swap-val">${mem.swap_total_mb > 0 ? `${mem.swap_used_mb} / ${mem.swap_total_mb} MB (${mem.swap_percent}%)` : "Desativado"}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Disk Card -->
+          <div class="devops-card">
+            <div class="devops-card-top">
+              <span class="devops-card-label">💾 Armazenamento SSD</span>
+              <span class="devops-card-tag ${diskTag}" id="devops-disk-tag">${diskTagText}</span>
+            </div>
+            <div class="devops-big-metric">
+              <span class="value" id="devops-disk-val">${disk.percent}%</span>
+              <span class="sub" id="devops-disk-sub">${disk.used_gb} / ${disk.total_gb} GB</span>
+            </div>
+            <div class="devops-bar-track" title="Disco usado: ${disk.used_gb} GB de ${disk.total_gb} GB">
+              <div class="devops-bar-fill disk" id="devops-disk-bar" style="width: ${Math.min(100, Math.max(2, disk.percent))}%"></div>
+            </div>
+            <div class="devops-details-list">
+              <div class="devops-detail-row">
+                <span>Espaço Usado:</span>
+                <strong id="devops-disk-used-val">${disk.used_gb} GB</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>Espaço Livre:</span>
+                <strong id="devops-disk-free-val" style="color: #34d399;">${disk.free_gb} GB</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>Ponto de Montagem:</span>
+                <strong>${disk.mount || "/"}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Docker Swarm & Host Card -->
+          <div class="devops-card">
+            <div class="devops-card-top">
+              <span class="devops-card-label">🐳 Docker & Cluster Host</span>
+              <span class="devops-card-tag ${swarm.active ? "ok" : "crit"}">${swarm.active ? "Swarm Ativo" : "Inativo"}</span>
+            </div>
+            <div class="devops-big-metric">
+              <span class="value" id="devops-containers-count">${containers.length}</span>
+              <span class="sub">containers ativos</span>
+            </div>
+            <div class="devops-bar-track" style="background: rgba(59, 130, 246, 0.1);">
+              <div class="devops-bar-fill" style="width: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); box-shadow: 0 0 10px rgba(59,130,246,0.4);"></div>
+            </div>
+            <div class="devops-details-list">
+              <div class="devops-detail-row">
+                <span>Stacks no Swarm:</span>
+                <strong>${swarm.total_stacks || 0} stacks</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>Uptime Host:</span>
+                <strong id="devops-host-uptime" style="color: #60a5fa;">${sys.uptime ? sys.uptime.human : "-"}</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>Sistema / Arch:</span>
+                <strong style="font-size: 0.75rem;">${escapeHtml(sys.distro || "Linux")} (${sys.arch || "x86_64"})</strong>
+              </div>
+              <div class="devops-detail-row">
+                <span>IP Público:</span>
+                <strong style="color: #38bdf8;">${escapeHtml(sys.public_ip || ip)}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Histórico & Tendências de Recursos (1h, 2h, 24h, 7d, 30d) -->
+        ${renderDevOpsHistoryCard()}
+
+        <!-- Containers Table (HTOP Modern Visual Table) -->
+        <div class="devops-table-card">
+          <div class="devops-table-header-row">
+            <div class="devops-table-title">
+              <span>📋 Containers Docker em Execução</span>
+              <span class="devops-count-pill" id="devops-table-count">${filteredContainers.length} de ${containers.length}</span>
+            </div>
+            <div class="devops-search-box">
+              <input
+                type="text"
+                class="devops-search-input"
+                id="devops-filter-input"
+                placeholder="🔍 Filtrar container, stack ou imagem..."
+                value="${escapeHtml(state.devopsSearch)}"
+              />
+            </div>
+          </div>
+
+          <div class="devops-table-wrap">
+            <table class="devops-htop-table">
+              <thead>
+                <tr>
+                  <th>Stack</th>
+                  <th>Container / Serviço</th>
+                  <th>Status</th>
+                  <th>CPU (%)</th>
+                  <th>Memória RAM</th>
+                  <th>Tráfego Rede (Net I/O)</th>
+                  <th>Imagem Docker</th>
+                </tr>
+              </thead>
+              <tbody id="devops-containers-tbody">
+                ${renderContainersRows(containers, state.devopsSearch)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // ── Binds de Eventos ─────────────────────────────────────────────
   function bindEvents() {
     app.querySelectorAll("[data-tab]").forEach(btn => {
       btn.onclick = () => {
-        state.activeTab = btn.dataset.tab;
-        if (state.activeTab === "base") {
-          loadBaseInfo();
-        }
-        if (state.activeTab === "mcp") {
-          loadMcpConfig();
+        switchTab(btn.dataset.tab);
+      };
+    });
+
+    // ── DevOps Tab Events ────────────────────────
+    const btnToggleDevopsRefresh = document.getElementById("btn-toggle-devops-refresh");
+    if (btnToggleDevopsRefresh) {
+      btnToggleDevopsRefresh.onclick = () => {
+        state.devopsAutoRefresh = !state.devopsAutoRefresh;
+        if (state.devopsAutoRefresh) {
+          startDevopsPolling();
+        } else {
+          stopDevopsPolling();
         }
         render();
       };
+    }
+
+    const btnRefreshDevops = document.getElementById("btn-refresh-devops");
+    if (btnRefreshDevops) {
+      btnRefreshDevops.onclick = () => {
+        loadDevOpsStats(false);
+      };
+    }
+
+    const devopsFilterInput = document.getElementById("devops-filter-input");
+    if (devopsFilterInput) {
+      devopsFilterInput.oninput = (e) => {
+        state.devopsSearch = e.target.value;
+        const tbody = document.getElementById("devops-containers-tbody");
+        if (tbody && state.devops && state.devops.containers) {
+          tbody.innerHTML = renderContainersRows(state.devops.containers, state.devopsSearch);
+          const countPill = document.getElementById("devops-table-count");
+          if (countPill) {
+            const query = state.devopsSearch.trim().toLowerCase();
+            const fCount = query
+              ? state.devops.containers.filter(c =>
+                  (c.name || "").toLowerCase().includes(query) ||
+                  (c.clean_name || "").toLowerCase().includes(query) ||
+                  (c.stack || "").toLowerCase().includes(query) ||
+                  (c.image || "").toLowerCase().includes(query)
+                ).length
+              : state.devops.containers.length;
+            countPill.textContent = `${fCount} de ${state.devops.containers.length}`;
+          }
+        }
+      };
+    }
+
+    app.querySelectorAll("[data-history-range]").forEach(btn => {
+      btn.onclick = () => {
+        loadDevOpsHistory(btn.dataset.historyRange);
+      };
     });
+
+    app.querySelectorAll("[data-history-metric]").forEach(btn => {
+      btn.onclick = () => {
+        state.devopsHistoryMetric = btn.dataset.historyMetric;
+        render();
+      };
+    });
+
+    // ── Domínio Próprio & Traefik SSL Events ────────
+    const btnSaveDomain = document.getElementById("btn-save-panel-domain");
+    if (btnSaveDomain) {
+      btnSaveDomain.onclick = () => {
+        const input = document.getElementById("panel-domain-input");
+        const domain = input ? input.value.trim() : "";
+        if (!domain) {
+          toast("Digite um domínio válido (ex: painel.meudominio.com)", "err");
+          return;
+        }
+        const autoCf = document.getElementById("panel-domain-auto-cf")?.checked ?? true;
+        savePanelDomain(domain, autoCf);
+      };
+    }
+
+    const btnRemoveDomain = document.getElementById("btn-remove-panel-domain");
+    if (btnRemoveDomain) {
+      btnRemoveDomain.onclick = () => {
+        if (confirm("Deseja realmente desconectar o domínio do painel? O acesso SSL seguro será removido e você precisará usar o IP cru novamente.")) {
+          removePanelDomain();
+        }
+      };
+    }
+
+    const btnCheckDomain = document.getElementById("btn-check-panel-domain");
+    if (btnCheckDomain) {
+      btnCheckDomain.onclick = async () => {
+        toast("Verificando apontamento DNS e SSL...", "info");
+        await loadPanelDomainInfo();
+        if (state.panelDomain?.dns_match) {
+          toast("DNS apontado com sucesso para a VPS!", "ok");
+        } else {
+          toast("DNS ainda não aponta para o IP da VPS", "warn");
+        }
+      };
+    }
+
+    const togglePortExposure = document.getElementById("toggle-panel-port-exposure");
+    if (togglePortExposure) {
+      togglePortExposure.onchange = async (e) => {
+        const expose = e.target.checked;
+        try {
+          const res = await api("/api/panel-domain/exposure", {
+            method: "POST",
+            body: JSON.stringify({ expose }),
+          });
+          toast(res.message || "Configuração de exposição atualizada!", "ok");
+          await loadPanelDomainInfo();
+          await loadMcpConfig();
+        } catch (err) {
+          toast("Erro ao alterar exposição da porta: " + err.message, "err");
+        }
+      };
+    }
 
     // ── MCP Tab Events ───────────────────────────
     app.querySelectorAll("[data-mcp-tab]").forEach(btn => {
@@ -1381,12 +2605,118 @@
     const btnCopySse = document.getElementById("btn-copy-mcp-sse");
     if (btnCopySse) {
       btnCopySse.onclick = () => {
-        const key = state.mcpConfig?.mcp_api_key || "";
-        const ip = state.mcpConfig?.public_ip || state.status?.public_ip || "SEU_IP_VPS";
-        const realSse = state.mcpConfig?.sse_url || `http://${ip}:8877/mcp/sse?token=${key}`;
+        const cfg = state.mcpConfig || {};
+        const key = cfg.mcp_api_key || "";
+        const domainActive = Boolean(cfg.domain_active || (state.panelDomain?.configured && state.panelDomain?.domain));
+        const activeDomain = cfg.domain || state.panelDomain?.domain || "";
+        const ip = cfg.public_ip || state.status?.public_ip || "SEU_IP_VPS";
+        const selectedMode = state.mcpEndpointMode || (domainActive ? "domain" : "ip");
+        const domainSse = (domainActive && activeDomain) ? `https://${activeDomain}/mcp/sse?token=${key}` : "";
+        const ipSse = ip ? `http://${ip}:8877/mcp/sse?token=${key}` : "";
+        const realSse = (selectedMode === "domain" && domainSse) ? domainSse : (ipSse || domainSse);
         if (realSse) {
           navigator.clipboard.writeText(realSse);
           toast("URL SSE do MCP copiada com sucesso!", "ok");
+        }
+      };
+    }
+
+    app.querySelectorAll("[data-endpoint-mode]").forEach(btn => {
+      btn.onclick = () => {
+        state.mcpEndpointMode = btn.dataset.endpointMode;
+        render();
+      };
+    });
+
+    const btnToggleWhitelist = document.getElementById("btn-toggle-mcp-whitelist");
+    if (btnToggleWhitelist) {
+      btnToggleWhitelist.onclick = async () => {
+        const sec = state.mcpSecurity || {};
+        const willEnable = !sec.ip_whitelist_enabled;
+        try {
+          const res = await api("/api/mcp/security", {
+            method: "POST",
+            body: JSON.stringify({
+              ip_whitelist_enabled: willEnable,
+              allowed_ips: sec.allowed_ips || [],
+            })
+          });
+          state.mcpSecurity = res.config;
+          toast(willEnable ? "🛡️ Whitelist de IP ativada no MCP!" : "Whitelist de IP desativada. Acesso liberado por chave.", "ok");
+          render();
+        } catch (e) {
+          toast("Erro ao alterar whitelist: " + e.message, "err");
+        }
+      };
+    }
+
+    const btnAddMyIp = document.getElementById("btn-add-my-ip");
+    if (btnAddMyIp) {
+      btnAddMyIp.onclick = () => {
+        const myIp = state.mcpClientIp;
+        if (!myIp) {
+          toast("IP do cliente ainda não detectado", "err");
+          return;
+        }
+        const textarea = document.getElementById("mcp-allowed-ips-input");
+        if (textarea) {
+          const current = textarea.value.trim();
+          const ips = current ? current.split(/[\n,]+/).map(s => s.trim()).filter(Boolean) : [];
+          if (!ips.includes(myIp)) {
+            ips.push(myIp);
+            textarea.value = ips.join("\n");
+            toast(`IP ${myIp} adicionado ao campo! Clique em Salvar para aplicar.`, "ok");
+          } else {
+            toast(`Seu IP (${myIp}) já está na lista.`, "ok");
+          }
+        }
+      };
+    }
+
+    const btnSaveMcpSecurity = document.getElementById("btn-save-mcp-security");
+    if (btnSaveMcpSecurity) {
+      btnSaveMcpSecurity.onclick = async () => {
+        const textarea = document.getElementById("mcp-allowed-ips-input");
+        const raw = textarea ? textarea.value : "";
+        const ips = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        const sec = state.mcpSecurity || {};
+        try {
+          const res = await api("/api/mcp/security", {
+            method: "POST",
+            body: JSON.stringify({
+              ip_whitelist_enabled: sec.ip_whitelist_enabled,
+              allowed_ips: ips,
+            })
+          });
+          state.mcpSecurity = res.config;
+          toast("Regras de Firewall do MCP salvas com sucesso!", "ok");
+          render();
+        } catch (e) {
+          toast("Erro ao salvar regras: " + e.message, "err");
+        }
+      };
+    }
+
+    const btnSyncCfWaf = document.getElementById("btn-sync-cloudflare-waf");
+    if (btnSyncCfWaf) {
+      btnSyncCfWaf.onclick = async () => {
+        const myIp = state.mcpClientIp;
+        if (!myIp) {
+          toast("IP do cliente não identificado", "err");
+          return;
+        }
+        try {
+          const res = await api("/api/mcp/security/cloudflare-sync", {
+            method: "POST",
+            body: JSON.stringify({ ip: myIp, mode: "whitelist" })
+          });
+          if (res.ok) {
+            toast(res.message || "Regra criada com sucesso no Firewall Cloudflare!", "ok");
+          } else {
+            toast(res.error || "Erro ao sincronizar com Cloudflare", "err");
+          }
+        } catch (e) {
+          toast("Falha na sincronização Cloudflare: " + e.message, "err");
         }
       };
     }
@@ -1410,8 +2740,17 @@
       btnCopySnippet.onclick = () => {
         const cfg = state.mcpConfig || {};
         const key = cfg.mcp_api_key || "";
+        const domainActive = Boolean(cfg.domain_active || (state.panelDomain?.configured && state.panelDomain?.domain));
+        const activeDomain = cfg.domain || state.panelDomain?.domain || "";
         const ip = cfg.public_ip || state.status?.public_ip || "SEU_IP_VPS";
-        const realSseUrl = cfg.sse_url || `http://${ip}:8877/mcp/sse?token=${key}`;
+        const selectedMode = state.mcpEndpointMode || (domainActive ? "domain" : "ip");
+
+        const domainBase = (domainActive && activeDomain) ? `https://${activeDomain}` : "";
+        const ipBase = ip ? `http://${ip}:8877` : "";
+        const domainSse = domainBase ? `${domainBase}/mcp/sse?token=${key}` : "";
+        const ipSse = ipBase ? `${ipBase}/mcp/sse?token=${key}` : "";
+        const realSseUrl = (selectedMode === "domain" && domainSse) ? domainSse : (ipSse || domainSse);
+        const realBaseUrl = (selectedMode === "domain" && domainBase) ? domainBase : (ipBase || domainBase);
 
         let realSnippet = JSON.stringify({
           "mcpServers": {
@@ -1437,7 +2776,7 @@
             "token": key
           }, null, 2);
         } else if (state.mcpActiveSnippetTab === "cli") {
-          realSnippet = `python -m mcp.cli --url http://${ip}:8877 --token ${key}`;
+          realSnippet = `python -m mcp.cli --url ${realBaseUrl} --token ${key}`;
         }
 
         navigator.clipboard.writeText(realSnippet);
@@ -1514,8 +2853,7 @@
 
     app.querySelectorAll("[data-manage-app]").forEach(btn => {
       btn.onclick = () => {
-        state.activeTab = "instances";
-        render();
+        switchTab("instances");
       };
     });
 
@@ -2092,9 +3430,8 @@
         state.progress.ctaText = "Ir para o Marketplace de APPs ➜";
         state.progress.onDone = async () => {
           closeModal();
-          state.activeTab = "marketplace";
+          switchTab("marketplace");
           await Promise.all([loadApps(), loadBaseInfo()]);
-          render();
         };
         render();
       } catch (err) {
@@ -2250,9 +3587,8 @@
         state.progress.ctaText = "Ver em Minhas Instâncias ➜";
         state.progress.onDone = async () => {
           closeModal();
-          state.activeTab = "instances";
+          switchTab("instances");
           await loadApps();
-          render();
         };
         render();
         return;

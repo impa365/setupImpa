@@ -223,10 +223,17 @@ start_agent() {
   local docker_bin
   docker_bin="$(command -v docker 2>/dev/null || echo '/usr/bin/docker')"
 
+  local port_flag="-p ${AGENT_PORT}:8877"
+  if [ -f /root/dados_vps/panel_domain.json ]; then
+    port_flag=""
+    info "Domínio próprio detectado. Porta $AGENT_PORT mantida interna no Docker (não exposta no host)."
+  fi
+
   docker run -d \
     --name setupimpa-agent \
     --restart unless-stopped \
-    -p "${AGENT_PORT}:8877" \
+    --network "$NETWORK_NAME" \
+    ${port_flag} \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${docker_bin}:/usr/bin/docker:ro" \
     -v /root:/root \
@@ -286,6 +293,15 @@ main() {
   impa_telemetry "completed"
   log "=== SetupImpa bootstrap end ==="
 
+  local panel_url="http://${PUBLIC_IP}:${AGENT_PORT}"
+  if [ -f /root/dados_vps/panel_domain.json ]; then
+    local configured_domain
+    configured_domain=$(grep -o '"domain": *"[^"]*"' /root/dados_vps/panel_domain.json 2>/dev/null | cut -d'"' -f4)
+    if [ -n "$configured_domain" ]; then
+      panel_url="https://${configured_domain}"
+    fi
+  fi
+
   echo ""
   echo -e "  ${GREEN}╔══════════════════════════════════════════════════════════════╗${RESET}"
   echo -e "  ${GREEN}║                                                              ║${RESET}"
@@ -293,7 +309,7 @@ main() {
   echo -e "  ${GREEN}║                                                              ║${RESET}"
   echo -e "  ${GREEN}║   👉 ACESSE SEU PAINEL NO SEU NAVEGADOR:                    ║${RESET}"
   echo -e "  ${GREEN}║                                                              ║${RESET}"
-  echo -e "  ${GREEN}║      🔗  ${BOLD}${CYAN}http://${PUBLIC_IP}:${AGENT_PORT}${RESET}${GREEN}                               ║${RESET}"
+  echo -e "  ${GREEN}║      🔗  ${BOLD}${CYAN}${panel_url}${RESET}${GREEN}                               ║${RESET}"
   echo -e "  ${GREEN}║                                                              ║${RESET}"
   echo -e "  ${GREEN}╠══════════════════════════════════════════════════════════════╣${RESET}"
   echo -e "  ${GREEN}║   💡 O QUE FAZER AGORA:                                      ║${RESET}"
