@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import secrets
 import subprocess
+import time
 from pathlib import Path
 
 from . import checks, portainer_client
@@ -11,6 +12,7 @@ from . import checks, portainer_client
 log = logging.getLogger("setupimpa.base")
 ROOT = Path("/root")
 DADOS = Path("/root/dados_vps")
+TRAEFIK_DYNAMIC = Path("/opt/setupimpa/traefik_dynamic")
 NETWORK = __import__("os").environ.get("SETUPIMPA_NETWORK", "network_public")
 
 TRAEFIK_YAML = """version: "3.7"
@@ -156,6 +158,26 @@ def ensure_volumes() -> None:
     for vol in ("volume_swarm_certificates", "portainer_data"):
         _run(["docker", "volume", "create", vol], check=False)
 
+def ensure_traefik_dynamic() -> None:
+    """Create the bind-mount source dir for Traefik's file provider.
+
+    The Traefik stack mounts /opt/setupimpa/traefik_dynamic:/etc/traefik/dynamic.
+    Swarm rejects the task if the host path does not exist, which leaves Traefik
+    0/1 and every service behind it (Portainer included) unreachable.
+    """
+    TRAEFIK_DYNAMIC.mkdir(parents=True, exist_ok=True)
+
+def _service_converged(name: str, retries: int = 10, delay: float = 3.0) -> tuple[bool, str]:
+    """Return (ok, replicas) once a swarm service reaches N/N or retries run out."""
+    last = ""
+    for _ in range(retries):
+        out = _run(["docker", "service", "ls", "--filter", f"name={name}", "--format", "{{.Replicas}}"], check=False)
+        last = (out.stdout or "").strip()
+        if last and last.split("/")[0] == last.split("/")[-1] and last.split("/")[0] != "0":
+            return True, last
+        time.sleep(delay)
+    return False, last
+
 
 def install_base(*, email: str, portainer_domain: str, user: str, password: str) -> dict:
     portainer_domain = checks.normalize_domain(portainer_domain)
@@ -170,6 +192,7 @@ def install_base(*, email: str, portainer_domain: str, user: str, password: str)
 
     ensure_network()
     ensure_volumes()
+    ensure_traefik_dynamic()
     DADOS.mkdir(parents=True, exist_ok=True)
 
     traefik = TRAEFIK_YAML.format(network=NETWORK, email=email)
@@ -181,6 +204,16 @@ def install_base(*, email: str, portainer_domain: str, user: str, password: str)
     r1 = _run(["docker", "stack", "deploy", "--prune", "--resolve-image", "always", "-c", "/root/traefik.yaml", "traefik"], check=False)
     if r1.returncode != 0:
         return {"ok": False, "error": "traefik_deploy", "detail": (r1.stderr or r1.stdout)[:500]}
+
+    ok_traefik, replicas = _service_converged("traefik_traefik")
+    if not ok_traefik:
+        detail = _run(["docker", "service", "ps", "traefik_traefik", "--no-trunc"], check=False).stdout or ""
+        return {
+            "ok": False,
+            "error": "traefik_not_converged",
+            "replicas": replicas,
+            "detail": detail[:800],
+        }
 
     r2 = _run(["docker", "stack", "deploy", "--prune", "--resolve-image", "always", "-c", "/root/portainer.yaml", "portainer"], check=False)
     if r2.returncode != 0:

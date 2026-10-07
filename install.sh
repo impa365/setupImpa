@@ -186,6 +186,9 @@ generate_token() {
 
 install_agent_files() {
   mkdir -p "$INSTALL_DIR"
+  # Bind-mount source for Traefik's file provider. Swarm rejects the Traefik
+  # task if this host path is missing, leaving port 80/443 down.
+  mkdir -p "$INSTALL_DIR/traefik_dynamic"
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 
   if [ -n "${SCRIPT_DIR:-}" ] && [ -d "$SCRIPT_DIR/agent" ]; then
