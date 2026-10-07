@@ -97,22 +97,25 @@ def install(
     # ── PostgreSQL connection resolution ──
     db_connected = False
     if db_instance and db_instance not in ("__none__", "none", "false"):
-        if not db_host:
-            inst = registry.get(db_instance)
-            if inst and inst.get("credentials"):
-                db_host = inst["credentials"].get("host", f"{db_instance}_postgres")
-                db_port = inst["credentials"].get("port", 5432)
-                db_user = inst["credentials"].get("user", "postgres")
-                db_pass = inst["credentials"].get("password", "")
-            else:
-                db_host = f"{db_instance}_postgres"
-                dados_file = Path(f"/root/dados_vps/dados_{db_instance}")
-                if dados_file.exists():
-                    for line in dados_file.read_text(encoding="utf-8", errors="replace").splitlines():
-                        if line.startswith("Usuario:"):
-                            db_user = line.split(":", 1)[1].strip()
-                        elif line.startswith("Senha:"):
-                            db_pass = line.split(":", 1)[1].strip()
+        # Resolve credentials from the registry even when a db_host was
+        # supplied, so we never fall back to a generated password that does
+        # not match the running PostgreSQL instance.
+        inst = registry.get(db_instance)
+        creds = (inst or {}).get("credentials") or {}
+        if creds:
+            db_host = db_host or creds.get("host", f"{db_instance}_postgres")
+            db_port = creds.get("port", db_port)
+            db_user = creds.get("user") or db_user
+            db_pass = creds.get("password") or db_pass
+        else:
+            db_host = db_host or f"{db_instance}_postgres"
+            dados_file = Path(f"/root/dados_vps/dados_{db_instance}")
+            if dados_file.exists():
+                for line in dados_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if line.startswith("Usuario:"):
+                        db_user = line.split(":", 1)[1].strip()
+                    elif line.startswith("Senha:"):
+                        db_pass = line.split(":", 1)[1].strip()
 
         # Cria a database "evolution" dentro do PostgreSQL escolhido caso ainda não exista
         postgres.ensure_database(db_instance, db_name)

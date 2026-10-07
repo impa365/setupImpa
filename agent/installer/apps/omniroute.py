@@ -118,8 +118,9 @@ def install(
     vol_data = f"omniroute{suffix}_data"
     vol_redis = f"omniroute{suffix}_redis"
 
-    domain = (domain or "").strip()
-    checks.validate_domain(domain)
+    domain = checks.normalize_domain((domain or "").strip())
+    if not checks.validate_domain_name(domain):
+        return {"ok": False, "error": "dominio_invalido"}
     version = (version or "3.8.50-web").strip()
 
     initial_password = initial_password or secrets.token_urlsafe(16)
@@ -149,8 +150,17 @@ def install(
         initial_password=initial_password,
     )
 
-    client = portainer_client.get_client()
-    stack = client.deploy_swarm_stack(name=instance_id, compose_yaml=compose)
+    stack_name = instance_id
+    yaml_path = Path(f"/root/{stack_name}.yaml")
+    yaml_path.write_text(compose, encoding="utf-8")
+    result = portainer_client.create_swarm_stack(stack_name, compose)
+    if not result.get("ok"):
+        r = subprocess.run(
+            ["docker", "stack", "deploy", "--prune", "--resolve-image", "always", "-c", str(yaml_path), stack_name],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            return {"ok": False, "error": "deploy_failed", "detail": result, "cli": r.stderr}
 
     dados = Path("/root/dados_vps")
     dados.mkdir(parents=True, exist_ok=True)
@@ -168,19 +178,17 @@ def install(
     )
     creds_file.write_text(creds_content)
 
-    post_report = validate.run_post_install_validation(
+    post_report = validate.wait_stack(
         instance_id,
-        domain=domain,
         expected_services=["omniroute", redis_svc],
+        retries=6, delay=15,
     )
 
-    registry.register_instance(
-        "omniroute",
-        instance_id,
-        instance_num,
-        domain=domain,
-        stack_id=stack.get("Id"),
-        extra={"version": version, "redis_svc": redis_svc},
+    registry.register(
+        "omniroute", instance_id, instance_num,
+        stack_name=instance_id, domain=domain,
+        credentials={"url": f"https://{domain}", "user": "admin", "password": initial_password},
+        params={"domain": domain, "version": version, "redis_svc": redis_svc},
     )
 
     return {
@@ -196,9 +204,8 @@ def install(
 
 
 def uninstall(instance_id: str = "omniroute") -> dict:
-    client = portainer_client.get_client()
-    res = client.delete_swarm_stack(instance_id)
-    registry.unregister_instance("omniroute", instance_id)
+    res = registry.remove_stack(instance_id)
+    registry.unregister(instance_id)
     return {"status": "uninstalled", "instance_id": instance_id, "detail": res}
 
 

@@ -14,6 +14,7 @@ import secrets
 import subprocess
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 from . import checks, portainer_client, registry, validate
 
@@ -199,11 +200,21 @@ def render_compose(app_id: str, params: dict[str, Any], instance_id: str, instan
 
     tmpl = app["yaml_template"]
 
-    # Calculate multi-instance suffix matching SetupOrion's bash ${1:+_$1}
-    # For instance 1 (first), suffix is "" unless explicitly requested
-    suffix = f"_{instance_num}" if instance_num > 1 else ""
+    # Bash-escaped dollar (``$$1`` in the source compiles to a literal ``$1``,
+    # e.g. Traefik redirectregex backreferences). Protect it before any
+    # substitution so it is not mistaken for a variable.
+    rendered = tmpl.replace("$$", "\x00DOLLAR\x00")
 
-    rendered = tmpl.replace("${1:+_$1}", suffix)
+    # SetupOrion bash multi-instance suffix, e.g. ``typebot${1:+_$1}``.
+    # Handle both separator variants found in the catalog: ``${1:+_$1}``
+    # (underscore) and ``${1:+-$1}`` (hyphen). For instance 1 the whole
+    # expression collapses to "" (matches bash semantics).
+    suffix = f"_{instance_num}" if instance_num > 1 else ""
+    rendered = rendered.replace("${1:+_$1}", suffix)
+    if instance_num > 1:
+        rendered = rendered.replace("${1:+-$1}", f"-{instance_num}")
+    else:
+        rendered = rendered.replace("${1:+-$1}", "")
 
     # Active internal network
     network = checks.active_network()
@@ -278,29 +289,51 @@ def render_compose(app_id: str, params: dict[str, Any], instance_id: str, instan
             replacements[f"${v}"] = val
             replacements[f"${{{v}}}"] = val
 
+        else:
+            # Generic fallback so no declared var is left unsubstituted.
+            if v in params and params[v]:
+                gval = params[v]
+            elif "site" in v_lower or "empresa" in v_lower or "nome" in v_lower:
+                gval = params.get(v) or app_id
+            elif "sobre_ssl" in v_lower or "ssl" in v_lower:
+                gval = "true"
+            else:
+                gval = ""
+            replacements[f"${v}"] = gval
+            replacements[f"${{{v}}}"] = gval
+            if "site" in v_lower or "empresa" in v_lower or "nome" in v_lower:
+                generated_secrets[v] = gval
+
     # Apply substitutions
     for k, v in replacements.items():
         rendered = rendered.replace(k, str(v))
 
-    # Catch any leftover $var pattern and replace with sensible defaults
-    leftovers = re.findall(r"\$([a-zA-Z0-9_]+)", rendered)
-    for lvar in set(leftovers):
-        if lvar in ("1", "opcao2"):
-            rendered = rendered.replace(f"${lvar}", "")
-            continue
+    # Catch any leftover $var / ${var} pattern and replace with sensible defaults
+    leftovers = re.findall(r"\$\{([a-zA-Z0-9_]+)\}|\$([a-zA-Z0-9_]+)", rendered)
+    flat = {a or b for a, b in leftovers}
+    for lvar in flat:
         l_lower = lvar.lower()
-        if "key" in l_lower or "secret" in l_lower:
+        if lvar in ("1", "opcao2"):
+            r_val = ""
+        elif "key" in l_lower or "secret" in l_lower:
             r_val = secrets.token_hex(16)
         elif "url" in l_lower or "domain" in l_lower:
             r_val = domain or "localhost"
         elif "email" in l_lower:
             r_val = smtp_email
+        elif "site" in l_lower or "empresa" in l_lower or "nome" in l_lower:
+            r_val = app_id
         else:
             r_val = ""
+        # replace both brace styles
+        rendered = rendered.replace(f"${{{lvar}}}", r_val)
         rendered = rendered.replace(f"${lvar}", r_val)
 
     # Clean backslash escaped backticks: \`host\` -> `host`
     rendered = rendered.replace(r"\`", "`")
+
+    # Restore bash-escaped dollars to literal $
+    rendered = rendered.replace("\x00DOLLAR\x00", "$")
 
     return rendered, generated_secrets
 
@@ -326,7 +359,9 @@ def install(
     pg_dbs = app.get("pg_dbs", [])
     suffix = f"_{instance_num}" if instance_num > 1 else ""
     for db_tmpl in pg_dbs:
-        db_name = db_tmpl.replace("${1:+_$1}", suffix)
+        db_name = db_tmpl.replace("${1:+_$1}", suffix).replace(
+            "${1:+-$1}", f"-{instance_num}" if instance_num > 1 else ""
+        )
         log.info("Ensuring PostgreSQL database: %s", db_name)
         _ensure_postgres_database(db_name)
 
@@ -346,13 +381,21 @@ def install(
 
     # 4. Deploy stack via Portainer API
     log.info("Deploying stack '%s' to Portainer Swarm...", instance_id)
-    p_res = portainer_client.deploy_stack(instance_id, yaml_content)
+    p_res = portainer_client.create_swarm_stack(instance_id, yaml_content)
     if not p_res.get("ok"):
-        return {
-            "ok": False,
-            "error": f"Falha no deploy Portainer: {p_res.get('error')}",
-            "details": p_res.get("details"),
-        }
+        # Fallback: deploy straight through the Docker CLI with the rendered YAML
+        yaml_path = Path(f"/root/{instance_id}.yaml")
+        yaml_path.write_text(yaml_content, encoding="utf-8")
+        r = subprocess.run(
+            ["docker", "stack", "deploy", "--prune", "--resolve-image", "always", "-c", str(yaml_path), instance_id],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            return {
+                "ok": False,
+                "error": f"Falha no deploy Portainer: {p_res.get('error')}",
+                "details": p_res.get("details") or r.stderr[:500],
+            }
 
     # 5. Save credentials in /root/dados_vps/dados_<instance_id> (SetupOrion format)
     try:
@@ -364,7 +407,7 @@ def install(
             f"Dominio: https://{domain}" if domain else "Dominio: (interno)",
             "",
             f"Instancia: {instance_id}",
-            f"Data Instalacao: {checks.now_iso() if hasattr(checks, 'now_iso') else ''}",
+            f"Data Instalacao: {datetime.now(timezone.utc).isoformat()}",
             "",
             "--- Credenciais e Chaves Geradas ---",
         ]
@@ -377,17 +420,18 @@ def install(
         log.warning("Could not save credentials file: %s", e)
 
     # 6. Register instance in SetupImpa registry
-    registry.register_instance(
-        app_id=app_id,
-        instance_id=instance_id,
-        instance_num=instance_num,
+    registry.register(
+        app_id,
+        instance_id,
+        instance_num,
+        stack_name=instance_id,
         domain=domain,
         credentials=generated_secrets,
         params={"source": "setuporion"},
     )
 
     # 7. Post-install validation
-    val = validate.wait_stack_healthy(instance_id, timeout_sec=120)
+    val = validate.wait_stack(instance_id, retries=4, delay=15)
 
     return {
         "ok": True,

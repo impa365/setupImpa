@@ -107,8 +107,9 @@ def install(
     svc = f"9router{suffix}"
     vol_data = f"9router{suffix}_data"
 
-    domain = (domain or "").strip()
-    checks.validate_domain(domain)
+    domain = checks.normalize_domain((domain or "").strip())
+    if not checks.validate_domain_name(domain):
+        return {"ok": False, "error": "dominio_invalido"}
     image = (image or "decolua/9router:latest").strip()
 
     initial_password = initial_password or secrets.token_urlsafe(16)
@@ -134,63 +135,80 @@ def install(
         initial_password=initial_password,
     )
 
-    client = portainer_client.get_client()
-    stack = client.deploy_swarm_stack(name=instance_id, compose_yaml=compose)
+    stack_name = instance_id
+    yaml_path = Path(f"/root/{stack_name}.yaml")
+    yaml_path.write_text(compose, encoding="utf-8")
+
+    result = portainer_client.create_swarm_stack(stack_name, compose)
+    if not result.get("ok"):
+        r = subprocess.run(
+            ["docker", "stack", "deploy", "--prune", "--resolve-image", "always", "-c", str(yaml_path), stack_name],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            return {"ok": False, "error": "deploy_failed", "detail": result, "cli": r.stderr}
+
+    creds = {
+        "url": f"https://{domain}",
+        "user": "admin",
+        "password": initial_password,
+        "image": image,
+        "api_key_secret": api_key_secret,
+        "machine_id_salt": machine_id_salt,
+    }
 
     dados = Path("/root/dados_vps")
     dados.mkdir(parents=True, exist_ok=True)
     creds_file = dados / f"{instance_id}_credentials.txt"
     creds_content = (
-        f"Instância: {instance_id} (#{instance_num})\n"
-        f"Data: {Path('/etc/timezone').read_text().strip() if Path('/etc/timezone').exists() else 'UTC'}\n"
+        f"Instancia: {instance_id} (#{instance_num})\n"
         f"Dashboard: https://{domain}\n"
         f"Imagem: {image}\n"
-        f"Usuário Inicial: admin\n"
-        f"Senha Inicial (1º Login): {initial_password}\n"
+        f"Usuario Inicial: admin\n"
+        f"Senha Inicial (1o Login): {initial_password}\n"
         f"API Key Secret: {api_key_secret}\n"
         f"Machine ID Salt: {machine_id_salt}\n"
     )
-    creds_file.write_text(creds_content)
+    creds_file.write_text(creds_content, encoding="utf-8")
 
-    post_report = validate.run_post_install_validation(
-        instance_id,
-        domain=domain,
-        expected_services=["nine_router"],
+    registry.register(
+        "9router", instance_id, instance_num,
+        stack_name=stack_name, domain=domain,
+        credentials=creds,
+        params={"domain": domain, "image": image},
     )
 
-    registry.register_instance(
-        "9router",
-        instance_id,
-        instance_num,
-        domain=domain,
-        stack_id=stack.get("Id"),
-        extra={"image": image},
+    v = validate.wait_stack(
+        stack_name,
+        expected_services=["nine_router"],
+        retries=6, delay=15,
     )
 
     return {
+        "ok": True,
         "status": "installed",
         "instance_id": instance_id,
         "instance_num": instance_num,
         "domain": domain,
         "image": image,
-        "initial_password": initial_password,
+        "credentials": creds,
         "credentials_file": str(creds_file),
-        "post_report": post_report,
+        "validate": v,
+        "message": f"9Router instalado. Acesse https://{domain} e faca login com admin / {initial_password}",
     }
 
 
 def uninstall(instance_id: str = "9router") -> dict:
-    client = portainer_client.get_client()
-    res = client.delete_swarm_stack(instance_id)
-    registry.unregister_instance("9router", instance_id)
+    res = registry.remove_stack(instance_id)
+    registry.unregister(instance_id)
     return {"status": "uninstalled", "instance_id": instance_id, "detail": res}
 
 
 def get_credentials(instance_id: str = "9router") -> str:
     creds_file = Path("/root/dados_vps") / f"{instance_id}_credentials.txt"
     if creds_file.exists():
-        return creds_file.read_text()
-    return "Nenhum arquivo de credenciais encontrado para esta instância."
+        return creds_file.read_text(encoding="utf-8")
+    return "Nenhum arquivo de credenciais encontrado para esta instancia."
 
 
 def meta() -> dict:
@@ -202,14 +220,14 @@ def meta() -> dict:
         "multi_instance": True,
         "requires_postgres": False,
         "fields": [
-            {"key": "domain", "label": "Domínio (ex: 9router.meusite.com)", "required": True},
+            {"key": "domain", "label": "Dominio (ex: 9router.meusite.com)", "required": True},
             {
                 "key": "image",
-                "label": "Imagem / Versão do 9Router",
+                "label": "Imagem / Versao do 9Router",
                 "type": "select",
                 "options": [
                     {"value": "decolua/9router:latest", "label": "decolua/9router:latest (Oficial - Recomendada)"},
-                    {"value": "decolua/9router:0.5.81", "label": "decolua/9router:0.5.81 (Oficial estável)"},
+                    {"value": "decolua/9router:0.5.81", "label": "decolua/9router:0.5.81 (Oficial estavel)"},
                     {"value": "impa365/9router:0.5.81", "label": "impa365/9router:0.5.81 (Build IMPA 365)"},
                 ],
                 "default": "decolua/9router:latest",

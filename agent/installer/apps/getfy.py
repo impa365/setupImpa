@@ -269,21 +269,24 @@ def install(
     if not checks.validate_domain_name(domain):
         return {"ok": False, "error": "dominio_invalido"}
 
-    if db_instance and not db_host:
-        inst = registry.get(db_instance)
-        if inst and inst.get("credentials"):
-            db_host = inst["credentials"].get("host", f"{db_instance}_postgres")
-            db_user = inst["credentials"].get("user", "postgres")
-            db_pass = inst["credentials"].get("password", "")
-        else:
-            db_host = f"{db_instance}_postgres"
-            dados_file = Path(f"/root/dados_vps/dados_{db_instance}")
-            if dados_file.exists():
-                for line in dados_file.read_text(encoding="utf-8", errors="replace").splitlines():
-                    if line.startswith("Usuario:"):
-                        db_user = line.split(":", 1)[1].strip()
-                    elif line.startswith("Senha:"):
-                        db_pass = line.split(":", 1)[1].strip()
+    db_instance = db_instance or "postgres"
+    inst = registry.get(db_instance)
+    creds = (inst or {}).get("credentials") or {}
+    if creds:
+        # Registry is authoritative for host/user/password; an explicit
+        # db_host still wins so callers can target a custom endpoint.
+        db_host = db_host or creds.get("host", f"{db_instance}_postgres")
+        db_user = creds.get("user") or db_user
+        db_pass = creds.get("password") or db_pass
+    else:
+        db_host = db_host or f"{db_instance}_postgres"
+        dados_file = Path(f"/root/dados_vps/dados_{db_instance}")
+        if dados_file.exists():
+            for line in dados_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("Usuario:"):
+                    db_user = line.split(":", 1)[1].strip()
+                elif line.startswith("Senha:"):
+                    db_pass = line.split(":", 1)[1].strip()
 
     db_host = db_host or "postgres_postgres"
     db_pass = db_pass or secrets.token_hex(16)

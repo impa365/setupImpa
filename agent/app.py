@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from installer import auth, base, checks, cloudflare, devops, orion_engine, portainer_client, registry, validate, metrics_history, panel_domain
 from installer.apps import evolution, getfy, hermes, ninerouter, omniroute, postgres
+import contract
 from mcp import mcp_router
 
 VERSION = os.environ.get("SETUPIMPA_VERSION", "0.3.0")
@@ -590,6 +591,7 @@ async def _metrics_collector_loop():
 
 @app.on_event("startup")
 async def on_startup():
+    contract.verify_or_log()
     asyncio.create_task(_metrics_collector_loop())
 
 
